@@ -1,0 +1,472 @@
+// utils/nodeValidation.ts
+import { AppNode, NodeType, Connection } from '../types';
+
+/**
+ * 节点依赖规则定义
+ * 定义每种节点可以连接到哪些节点,以及输入输出限制
+ */
+export const NODE_DEPENDENCY_RULES: Record<NodeType, {
+  allowedInputs: NodeType[];      // 允许作为输入的节点类型
+  allowedOutputs: NodeType[];     // 允许作为输出连接到的节点类型
+  minInputs: number;              // 最少输入数量
+  maxInputs: number;              // 最多输入数量
+  description: string;            // 规则描述
+}> = {
+  // 创意描述 - 作为起始节点,无输入,可输出到多种生成节点
+  [NodeType.PROMPT_INPUT]: {
+    allowedInputs: [],
+    allowedOutputs: [
+      NodeType.IMAGE_GENERATOR,
+      NodeType.VIDEO_GENERATOR,
+      NodeType.AUDIO_GENERATOR,
+      NodeType.SCRIPT_PLANNER
+    ],
+    minInputs: 0,
+    maxInputs: 0,
+    description: '文本输入节点,作为工作流的起点'
+  },
+
+  // 文字生图 - 可接收文本和图像输入,可输出到图像编辑和视频生成
+  [NodeType.IMAGE_GENERATOR]: {
+    allowedInputs: [
+      NodeType.PROMPT_INPUT,
+      NodeType.IMAGE_GENERATOR,
+      NodeType.IMAGE_EDITOR,
+      NodeType.STORYBOARD_GENERATOR,
+      NodeType.CHARACTER_NODE
+    ],
+    allowedOutputs: [
+      NodeType.IMAGE_GENERATOR,    // 可继续生成图像
+      NodeType.VIDEO_GENERATOR,    // 图生视频
+      NodeType.IMAGE_EDITOR        // 图像编辑
+    ],
+    minInputs: 0,
+    maxInputs: 5,  // 支持多图参考 (1个prompt + 4个参考图)
+    description: '生成图像,支持文本和参考图像输入'
+  },
+
+  // 文生视频 - 支持多种输入源,可输出到视频分析和继续生成
+  [NodeType.VIDEO_GENERATOR]: {
+    allowedInputs: [
+      NodeType.PROMPT_INPUT,
+      NodeType.IMAGE_GENERATOR,
+      NodeType.VIDEO_GENERATOR,    // 视频续写
+      NodeType.IMAGE_EDITOR,
+      NodeType.STORYBOARD_GENERATOR,
+      NodeType.CHARACTER_NODE
+    ],
+    allowedOutputs: [
+      NodeType.VIDEO_GENERATOR,    // 视频续写
+      NodeType.VIDEO_ANALYZER      // 视频分析
+    ],
+    minInputs: 0,
+    maxInputs: 3,  // prompt + image/video + character
+    description: '生成视频,支持文本、图像、视频输入'
+  },
+
+  // 灵感音乐 - 仅接收文本输入,作为终点节点
+  [NodeType.AUDIO_GENERATOR]: {
+    allowedInputs: [
+      NodeType.PROMPT_INPUT
+    ],
+    allowedOutputs: [],  // 音频是终点节点
+    minInputs: 1,
+    maxInputs: 1,
+    description: '生成音频,仅接受文本输入'
+  },
+
+  // 视频分析 - 仅接收视频输入,可输出到文本节点
+  [NodeType.VIDEO_ANALYZER]: {
+    allowedInputs: [
+      NodeType.VIDEO_GENERATOR
+    ],
+    allowedOutputs: [
+      NodeType.VIDEO_GENERATOR,    // 分析后再生成
+      NodeType.SCRIPT_PLANNER      // 分析结果用于剧本
+    ],
+    minInputs: 1,
+    maxInputs: 1,
+    description: '分析视频内容,输出文本描述'
+  },
+
+  // 图像编辑 - 接收图像输入,可输出到图像和视频节点
+  [NodeType.IMAGE_EDITOR]: {
+    allowedInputs: [
+      NodeType.IMAGE_GENERATOR,
+      NodeType.IMAGE_EDITOR
+    ],
+    allowedOutputs: [
+      NodeType.IMAGE_GENERATOR,
+      NodeType.VIDEO_GENERATOR,
+      NodeType.IMAGE_EDITOR        // 可继续编辑
+    ],
+    minInputs: 1,
+    maxInputs: 2,  // 图像 + 编辑指令
+    description: '编辑图像,需要图像输入'
+  },
+
+  // 剧本大纲 - 接收文本输入,输出到分集和角色节点
+  [NodeType.SCRIPT_PLANNER]: {
+    allowedInputs: [
+      NodeType.PROMPT_INPUT,
+      NodeType.VIDEO_ANALYZER,
+      NodeType.DRAMA_REFINED
+    ],
+    allowedOutputs: [
+      NodeType.SCRIPT_EPISODE,
+      NodeType.CHARACTER_NODE
+    ],
+    minInputs: 0,
+    maxInputs: 3,
+    description: '生成剧本大纲'
+  },
+
+  // 剧本分集 - 接收大纲输入,输出到分镜和角色
+  [NodeType.SCRIPT_EPISODE]: {
+    allowedInputs: [
+      NodeType.SCRIPT_PLANNER
+    ],
+    allowedOutputs: [
+      NodeType.STORYBOARD_GENERATOR,
+      NodeType.CHARACTER_NODE,
+      NodeType.IMAGE_GENERATOR
+    ],
+    minInputs: 1,
+    maxInputs: 1,
+    description: '将大纲拆分为分集剧本'
+  },
+
+  // 分镜生成 - 接收剧本输入,输出到图像和视频
+  [NodeType.STORYBOARD_GENERATOR]: {
+    allowedInputs: [
+      NodeType.SCRIPT_EPISODE,
+      NodeType.PROMPT_INPUT
+    ],
+    allowedOutputs: [
+      NodeType.IMAGE_GENERATOR,
+      NodeType.VIDEO_GENERATOR
+    ],
+    minInputs: 1,
+    maxInputs: 1,
+    description: '生成电影分镜'
+  },
+
+  // 角色设计 - 接收剧本输入,输出到图像和视频
+  [NodeType.CHARACTER_NODE]: {
+    allowedInputs: [
+      NodeType.SCRIPT_PLANNER,
+      NodeType.SCRIPT_EPISODE
+    ],
+    allowedOutputs: [
+      NodeType.IMAGE_GENERATOR,
+      NodeType.VIDEO_GENERATOR
+    ],
+    minInputs: 1,
+    maxInputs: 1,
+    description: '提取角色并生成角色档案'
+  },
+
+  // 剧目分析 - 无输入,可输出到剧目精炼和剧本大纲
+  [NodeType.DRAMA_ANALYZER]: {
+    allowedInputs: [],
+    allowedOutputs: [
+      NodeType.DRAMA_REFINED,
+      NodeType.SCRIPT_PLANNER
+    ],
+    minInputs: 0,
+    maxInputs: 0,
+    description: '分析剧目的IP潜力和创作价值'
+  },
+
+  // 剧目精炼 - 接收剧目分析输入,输出到剧本大纲
+  [NodeType.DRAMA_REFINED]: {
+    allowedInputs: [
+      NodeType.DRAMA_ANALYZER
+    ],
+    allowedOutputs: [
+      NodeType.SCRIPT_PLANNER,
+      NodeType.SCRIPT_EPISODE,
+      NodeType.IMAGE_GENERATOR
+    ],
+    minInputs: 1,
+    maxInputs: 1,
+    description: '提取精炼标签,作为剧本创作的辅助信息'
+  }
+};
+
+/**
+ * 验证结果接口
+ */
+export interface ValidationResult {
+  valid: boolean;
+  error?: string;
+  warning?: string;
+}
+
+/**
+ * 验证节点连接是否合法
+ */
+export function validateConnection(
+  fromNode: AppNode,
+  toNode: AppNode,
+  existingConnections: Connection[]
+): ValidationResult {
+
+  // 1. 检查节点类型是否允许连接
+  const fromRules = NODE_DEPENDENCY_RULES[fromNode.type];
+  const toRules = NODE_DEPENDENCY_RULES[toNode.type];
+
+  if (!fromRules.allowedOutputs.includes(toNode.type)) {
+    return {
+      valid: false,
+      error: `"${getNodeDisplayName(fromNode.type)}" 不能连接到 "${getNodeDisplayName(toNode.type)}"`
+    };
+  }
+
+  if (!toRules.allowedInputs.includes(fromNode.type)) {
+    return {
+      valid: false,
+      error: `"${getNodeDisplayName(toNode.type)}" 不接受来自 "${getNodeDisplayName(fromNode.type)}" 的输入`
+    };
+  }
+
+  // 2. 检查目标节点的输入数量限制
+  const currentInputs = existingConnections.filter(c => c.to === toNode.id);
+
+  if (currentInputs.length >= toRules.maxInputs) {
+    return {
+      valid: false,
+      error: `"${getNodeDisplayName(toNode.type)}" 最多只能接收 ${toRules.maxInputs} 个输入`
+    };
+  }
+
+  // 3. 检查是否已存在相同的连接
+  const duplicateConnection = existingConnections.find(
+    c => c.from === fromNode.id && c.to === toNode.id
+  );
+
+  if (duplicateConnection) {
+    return {
+      valid: false,
+      error: '该连接已存在'
+    };
+  }
+
+  // 4. 检查是否会形成循环依赖
+  if (hasCircularDependency(fromNode.id, toNode.id, existingConnections)) {
+    return {
+      valid: false,
+      error: '不能创建循环依赖'
+    };
+  }
+
+  // 5. 检查自连接
+  if (fromNode.id === toNode.id) {
+    return {
+      valid: false,
+      error: '节点不能连接到自己'
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * 检测循环依赖 (使用 DFS)
+ */
+function hasCircularDependency(
+  fromId: string,
+  toId: string,
+  connections: Connection[]
+): boolean {
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+
+  function dfs(currentId: string): boolean {
+    // 如果在递归栈中发现了起始节点,说明有环
+    if (currentId === fromId) {
+      return true;
+    }
+
+    if (visited.has(currentId)) {
+      return false;
+    }
+
+    visited.add(currentId);
+    recursionStack.add(currentId);
+
+    // 查找所有从当前节点出发的连接
+    const outgoingConnections = connections.filter(c => c.from === currentId);
+
+    for (const conn of outgoingConnections) {
+      if (dfs(conn.to)) {
+        return true;
+      }
+    }
+
+    recursionStack.delete(currentId);
+    return false;
+  }
+
+  return dfs(toId);
+}
+
+/**
+ * 验证节点是否可以执行 (检查输入是否满足)
+ */
+export function canExecuteNode(
+  node: AppNode,
+  connections: Connection[]
+): ValidationResult {
+  const rules = NODE_DEPENDENCY_RULES[node.type];
+
+  // 获取当前节点的输入连接数
+  const inputCount = connections.filter(c => c.to === node.id).length;
+
+  // 检查最少输入要求
+  if (inputCount < rules.minInputs) {
+    return {
+      valid: false,
+      error: `"${getNodeDisplayName(node.type)}" 至少需要 ${rules.minInputs} 个输入才能执行`
+    };
+  }
+
+  // 特殊验证: 某些节点需要特定的配置
+  switch (node.type) {
+    case NodeType.IMAGE_GENERATOR:
+      if (!node.data.prompt && inputCount === 0) {
+        return {
+          valid: false,
+          error: '请输入提示词或连接一个文本输入节点'
+        };
+      }
+      break;
+
+    case NodeType.VIDEO_GENERATOR:
+      if (!node.data.prompt && inputCount === 0) {
+        return {
+          valid: false,
+          error: '请输入提示词或连接一个输入节点'
+        };
+      }
+      break;
+
+    case NodeType.AUDIO_GENERATOR:
+      if (!node.data.prompt && inputCount === 0) {
+        return {
+          valid: false,
+          error: '请输入提示词或连接一个文本输入节点'
+        };
+      }
+      break;
+
+    case NodeType.SCRIPT_PLANNER:
+      if (!node.data.scriptTheme) {
+        return {
+          valid: false,
+          error: '请配置剧本主题'
+        };
+      }
+      break;
+
+    case NodeType.SCRIPT_EPISODE:
+      if (!node.data.selectedChapter) {
+        return {
+          valid: false,
+          error: '请选择要拆分的章节'
+        };
+      }
+      break;
+
+    case NodeType.STORYBOARD_GENERATOR:
+      if (inputCount === 0) {
+        return {
+          valid: false,
+          error: '请连接一个剧本节点'
+        };
+      }
+      break;
+
+    case NodeType.CHARACTER_NODE:
+      if (inputCount === 0) {
+        return {
+          valid: false,
+          error: '请连接一个剧本节点'
+        };
+      }
+      break;
+
+    case NodeType.VIDEO_ANALYZER:
+      if (inputCount === 0) {
+        return {
+          valid: false,
+          error: '请连接一个视频生成节点'
+        };
+      }
+      break;
+
+    case NodeType.IMAGE_EDITOR:
+      if (inputCount === 0) {
+        return {
+          valid: false,
+          error: '请连接一个图像生成节点'
+        };
+      }
+      if (!node.data.prompt) {
+        return {
+          valid: false,
+          error: '请输入编辑指令'
+        };
+      }
+      break;
+  }
+
+  return { valid: true };
+}
+
+/**
+ * 获取节点显示名称 (中文)
+ */
+function getNodeDisplayName(type: NodeType): string {
+  const names: Record<NodeType, string> = {
+    [NodeType.PROMPT_INPUT]: '创意描述',
+    [NodeType.IMAGE_GENERATOR]: '文字生图',
+    [NodeType.VIDEO_GENERATOR]: '文生视频',
+    [NodeType.AUDIO_GENERATOR]: '灵感音乐',
+    [NodeType.VIDEO_ANALYZER]: '视频分析',
+    [NodeType.IMAGE_EDITOR]: '图像编辑',
+    [NodeType.SCRIPT_PLANNER]: '剧本大纲',
+    [NodeType.SCRIPT_EPISODE]: '剧本分集',
+    [NodeType.STORYBOARD_GENERATOR]: '分镜生成',
+    [NodeType.CHARACTER_NODE]: '角色设计',
+    [NodeType.DRAMA_ANALYZER]: '剧目分析',
+    [NodeType.DRAMA_REFINED]: '剧目精炼'
+  };
+
+  return names[type] || type;
+}
+
+/**
+ * 获取节点可以连接到的节点类型列表
+ */
+export function getAllowedOutputTypes(nodeType: NodeType): NodeType[] {
+  return NODE_DEPENDENCY_RULES[nodeType].allowedOutputs;
+}
+
+/**
+ * 获取节点可以接受的输入节点类型列表
+ */
+export function getAllowedInputTypes(nodeType: NodeType): NodeType[] {
+  return NODE_DEPENDENCY_RULES[nodeType].allowedInputs;
+}
+
+/**
+ * 检查两个节点类型是否可以连接
+ */
+export function canConnectNodeTypes(fromType: NodeType, toType: NodeType): boolean {
+  const fromRules = NODE_DEPENDENCY_RULES[fromType];
+  const toRules = NODE_DEPENDENCY_RULES[toType];
+
+  return fromRules.allowedOutputs.includes(toType) &&
+         toRules.allowedInputs.includes(fromType);
+}
