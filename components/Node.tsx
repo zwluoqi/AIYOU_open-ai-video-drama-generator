@@ -1,6 +1,6 @@
 
 import { AppNode, NodeStatus, NodeType, StoryboardShot, CharacterProfile } from '../types';
-import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles } from 'lucide-react';
+import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles, ZoomIn, ZoomOut, Minus, Circle, Square, Maximize, Move, RotateCw, TrendingUp, TrendingDown, ArrowRight, ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { VideoModeSelector, SceneDirectorOverlay } from './VideoNodeModules';
 import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
 
@@ -8,6 +8,42 @@ const IMAGE_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
 const VIDEO_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
 const IMAGE_RESOLUTIONS = ['1k', '2k', '4k'];
 const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'];
+
+// 专业镜头类型
+const SHOT_TYPES = [
+  { value: '远景 (ELS)', label: '远景', icon: Maximize, desc: 'Extreme Long Shot' },
+  { value: '全景 (LS)', label: '全景', icon: Square, desc: 'Long Shot' },
+  { value: '中景 (MS)', label: '中景', icon: Box, desc: 'Medium Shot' },
+  { value: '中近景 (MCS)', label: '中近景', icon: User, desc: 'Medium Close Shot' },
+  { value: '近景 (CU)', label: '近景', icon: Circle, desc: 'Close Up' },
+  { value: '特写 (ECU)', label: '特写', icon: ZoomIn, desc: 'Extreme Close Up' },
+  { value: '过肩镜头 (OTS)', label: '过肩', icon: Users, desc: 'Over The Shoulder' },
+  { value: '主观镜头 (POV)', label: '主观', icon: Eye, desc: 'Point of View' },
+];
+
+// 拍摄角度
+const CAMERA_ANGLES = [
+  { value: '平视', label: '平视', icon: Minus, desc: 'Eye Level' },
+  { value: '仰角', label: '仰角', icon: TrendingUp, desc: 'Low Angle' },
+  { value: '俯角', label: '俯角', icon: TrendingDown, desc: 'High Angle' },
+  { value: '顶视', label: '顶视', icon: ArrowDown, desc: 'Bird\'s Eye View' },
+  { value: '侧面', label: '侧面', icon: ArrowRight, desc: 'Side Angle' },
+  { value: '侧面仰角', label: '侧仰', icon: ArrowUpRight, desc: 'Side Low' },
+  { value: '侧面俯角', label: '侧俯', icon: ArrowDownRight, desc: 'Side High' },
+  { value: '倾斜', label: '倾斜', icon: RotateCw, desc: 'Dutch Angle' },
+];
+
+// 运镜方式
+const CAMERA_MOVEMENTS = [
+  { value: '固定镜头', label: '固定', icon: Maximize2, desc: 'Static Shot' },
+  { value: '推镜', label: '推镜', icon: ZoomIn, desc: 'Push In' },
+  { value: '拉镜', label: '拉镜', icon: ZoomOut, desc: 'Pull Out' },
+  { value: '摇镜', label: '摇镜', icon: RotateCw, desc: 'Pan' },
+  { value: '升降', label: '升降', icon: ArrowUp, desc: 'Boom' },
+  { value: '跟拍', label: '跟拍', icon: Move, desc: 'Tracking' },
+  { value: '环绕', label: '环绕', icon: RefreshCw, desc: 'Arc Shot' },
+  { value: '手持', label: '手持', icon: MousePointerClick, desc: 'Handheld' },
+];
 const IMAGE_COUNTS = [1, 2, 3, 4];
 const VIDEO_COUNTS = [1, 2, 3, 4];
 const GLASS_PANEL = "bg-[#2c2c2e]/95 backdrop-blur-2xl border border-white/10 shadow-2xl";
@@ -713,48 +749,91 @@ const NodeComponent: React.FC<NodeProps> = ({
                                           />
                                       </div>
 
-                                      <div className="grid grid-cols-2 gap-4">
-                                          <div>
-                                              <label className="block text-xs text-slate-400 mb-1">时长 (秒)</label>
-                                              <input
-                                                  type="number"
-                                                  min="1"
-                                                  max="10"
-                                                  step="0.5"
-                                                  value={editingShot.duration}
-                                                  onChange={(e) => setEditingShot({ ...editingShot, duration: parseFloat(e.target.value) || 3 })}
-                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                              />
-                                          </div>
-                                          <div>
-                                              <label className="block text-xs text-slate-400 mb-1">镜头类型</label>
-                                              <input
-                                                  type="text"
-                                                  value={editingShot.shotType}
-                                                  onChange={(e) => setEditingShot({ ...editingShot, shotType: e.target.value })}
-                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                              />
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-1">时长 (秒)</label>
+                                          <input
+                                              type="number"
+                                              min="1"
+                                              max="10"
+                                              step="0.5"
+                                              value={editingShot.duration}
+                                              onChange={(e) => setEditingShot({ ...editingShot, duration: parseFloat(e.target.value) || 3 })}
+                                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                          />
+                                      </div>
+
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-2">镜头类型</label>
+                                          <div className="grid grid-cols-4 gap-2">
+                                              {SHOT_TYPES.map((type) => {
+                                                  const Icon = type.icon;
+                                                  const isSelected = editingShot.shotType === type.value || editingShot.shotType.includes(type.label);
+                                                  return (
+                                                      <button
+                                                          key={type.value}
+                                                          onClick={() => setEditingShot({ ...editingShot, shotType: type.value })}
+                                                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
+                                                              isSelected
+                                                                  ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
+                                                                  : 'bg-black/20 border-white/10 text-slate-400 hover:bg-white/5 hover:border-white/20'
+                                                          }`}
+                                                          title={type.desc}
+                                                      >
+                                                          <Icon size={16} />
+                                                          <span className="text-[9px] font-medium">{type.label}</span>
+                                                      </button>
+                                                  );
+                                              })}
                                           </div>
                                       </div>
 
-                                      <div className="grid grid-cols-2 gap-4">
-                                          <div>
-                                              <label className="block text-xs text-slate-400 mb-1">拍摄角度</label>
-                                              <input
-                                                  type="text"
-                                                  value={editingShot.cameraAngle}
-                                                  onChange={(e) => setEditingShot({ ...editingShot, cameraAngle: e.target.value })}
-                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                              />
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-2">拍摄角度</label>
+                                          <div className="grid grid-cols-4 gap-2">
+                                              {CAMERA_ANGLES.map((angle) => {
+                                                  const Icon = angle.icon;
+                                                  const isSelected = editingShot.cameraAngle === angle.value || editingShot.cameraAngle.includes(angle.label);
+                                                  return (
+                                                      <button
+                                                          key={angle.value}
+                                                          onClick={() => setEditingShot({ ...editingShot, cameraAngle: angle.value })}
+                                                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
+                                                              isSelected
+                                                                  ? 'bg-violet-500/20 border-violet-500 text-violet-300'
+                                                                  : 'bg-black/20 border-white/10 text-slate-400 hover:bg-white/5 hover:border-white/20'
+                                                          }`}
+                                                          title={angle.desc}
+                                                      >
+                                                          <Icon size={16} />
+                                                          <span className="text-[9px] font-medium">{angle.label}</span>
+                                                      </button>
+                                                  );
+                                              })}
                                           </div>
-                                          <div>
-                                              <label className="block text-xs text-slate-400 mb-1">运镜方式</label>
-                                              <input
-                                                  type="text"
-                                                  value={editingShot.cameraMovement}
-                                                  onChange={(e) => setEditingShot({ ...editingShot, cameraMovement: e.target.value })}
-                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                              />
+                                      </div>
+
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-2">运镜方式</label>
+                                          <div className="grid grid-cols-4 gap-2">
+                                              {CAMERA_MOVEMENTS.map((movement) => {
+                                                  const Icon = movement.icon;
+                                                  const isSelected = editingShot.cameraMovement === movement.value || editingShot.cameraMovement.includes(movement.label);
+                                                  return (
+                                                      <button
+                                                          key={movement.value}
+                                                          onClick={() => setEditingShot({ ...editingShot, cameraMovement: movement.value })}
+                                                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
+                                                              isSelected
+                                                                  ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
+                                                                  : 'bg-black/20 border-white/10 text-slate-400 hover:bg-white/5 hover:border-white/20'
+                                                          }`}
+                                                          title={movement.desc}
+                                                      >
+                                                          <Icon size={16} />
+                                                          <span className="text-[9px] font-medium">{movement.label}</span>
+                                                      </button>
+                                                  );
+                                              })}
                                           </div>
                                       </div>
 
