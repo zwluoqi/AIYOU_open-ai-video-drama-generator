@@ -429,6 +429,79 @@ const CINEMATIC_STORYBOARD_INSTRUCTION = `
 5. **风格一致性**：确保所有镜头的描述符合指定的 [STYLE]。
 `;
 
+const DETAILED_STORYBOARD_INSTRUCTION = `
+你是一位专业的影视分镜师和摄影指导 (Storyboard Artist & DoP)。
+你的任务是将提供的【剧集脚本内容】细化拆分为详细的**影视级分镜脚本**。
+
+**输入约束：**
+1. 剧集标题 (Episode Title): 提供的标题
+2. 剧集内容 (Episode Content): 提供的剧本文本
+3. 目标总时长 (Total Duration): [N] 秒
+4. 视觉风格 (Visual Style): [STYLE]
+
+**输出格式要求：**
+必须直接输出一个 **JSON 数组**，不要包含任何 Markdown 标记（如 \`\`\`json）。
+数组中每个对象代表一个分镜，格式如下：
+
+[
+  {
+    "shotNumber": 1,
+    "duration": 3,
+    "scene": "教室 - 白天 - 靠窗最后一排",
+    "characters": ["林霄"],
+    "shotType": "特写 (Close-up)",
+    "cameraAngle": "侧面45度仰角",
+    "cameraMovement": "固定镜头 (Static Shot)",
+    "visualDescription": "阳光从窗外洒在林霄的侧脸上，他目光空洞地望向窗外，教室里其他同学的声音模糊成背景音",
+    "dialogue": "无",
+    "visualEffects": "浅景深，背景虚化；暖色调光线；ANIME风格，强调眼神细节",
+    "audioEffects": "环境音 - 教室嘈杂声（低音量）"
+  },
+  ...
+]
+
+**拆分要求（必须严格遵守）：**
+1. **每个分镜时长**：严格控制在 3-5 秒之间，不得超出此范围
+2. **分镜数量计算**：根据总时长和单镜时长计算
+   - 公式：分镜数量 = 总时长 / 平均镜头时长(3.5-4秒)
+   - 例如：60秒 → 15-20个分镜
+   - 例如：120秒 → 30-40个分镜
+3. **时间精确**：所有分镜的时长总和必须等于目标总时长（误差不超过±1秒）
+
+**内容要求：**
+1. **专业术语**：使用专业的影视术语
+   - 镜头类型：特写(CU)、中景(MS)、全景(WS)、主观镜头(POV)、过肩(OTS)等
+   - 拍摄角度：平视、仰角、俯角、第一人称、侧面、顶视、荷兰角等
+   - 运镜方式：固定镜头、推镜、拉镜、摇镜、跟拍、环绕、快速甩镜、手持等
+
+2. **画面描述详细**：
+   - 必须包含具体的人物动作、表情、环境细节
+   - 描述要有画面感，能够直接指导生成
+
+3. **场景信息完整**：
+   - 格式："地点 - 时间 - 具体位置"
+   - 例如："教室 - 白天 - 靠窗最后一排"
+
+4. **视觉效果专业**：
+   - 包含景深、色调、特效、风格等信息
+   - 必须符合指定的 [STYLE] 视觉风格
+
+5. **连贯性**：
+   - 分镜之间要有逻辑衔接
+   - 服务于整体叙事节奏
+
+6. **对白处理**：
+   - 如果有对白，标注角色名和对白内容
+   - 区分正常对白、内心独白(Voice Over)、旁白等
+   - 如果无对白，写"无"
+
+**重要提示：**
+- 输出必须是纯 JSON 数组，不要包含任何其他文字
+- 每个分镜对象的所有字段都必须填写
+- duration 字段必须是数字类型
+- characters 字段必须是字符串数组
+`;
+
 // --- API Functions ---
 
 export const sendChatMessage = async (
@@ -763,6 +836,170 @@ export const generateScriptEpisodes = async (
         throw new Error("生成剧本格式错误，请重试");
     }
 };
+
+export const generateDetailedStoryboard = async (
+    episodeTitle: string,
+    episodeContent: string,
+    totalDuration: number, // in seconds
+    visualStyle: string,
+    onShotGenerated?: (shot: import('../types').DetailedStoryboardShot) => void
+): Promise<import('../types').DetailedStoryboardShot[]> => {
+    console.log('[generateDetailedStoryboard] Starting generation with:', { episodeTitle, totalDuration, visualStyle });
+
+    const ai = getClient();
+    const prompt = `
+    Episode Title: ${episodeTitle}
+    Episode Content: ${episodeContent}
+    Total Duration: ${totalDuration} seconds
+    Visual Style: ${visualStyle}
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        config: {
+            systemInstruction: DETAILED_STORYBOARD_INSTRUCTION,
+            responseMimeType: 'application/json'
+        },
+        contents: { parts: [{ text: prompt }] }
+    });
+
+    try {
+        const text = response.text?.replace(/```json/g, '').replace(/```/g, '').trim() || "[]";
+        console.log('[generateDetailedStoryboard] Received response, parsing...');
+
+        const rawShots = JSON.parse(text);
+        console.log('[generateDetailedStoryboard] Parsed shots count:', rawShots.length);
+
+        let currentTime = 0;
+        const shots: import('../types').DetailedStoryboardShot[] = rawShots.map((rawShot: any, index: number) => {
+            const startTime = currentTime;
+            const duration = rawShot.duration || 4;
+            const endTime = currentTime + duration;
+            currentTime = endTime;
+
+            return {
+                id: `shot-${Date.now()}-${index}`,
+                shotNumber: rawShot.shotNumber || (index + 1),
+                duration,
+                scene: rawShot.scene || '',
+                characters: Array.isArray(rawShot.characters) ? rawShot.characters : [],
+                shotType: rawShot.shotType || '',
+                cameraAngle: rawShot.cameraAngle || '',
+                cameraMovement: rawShot.cameraMovement || '',
+                visualDescription: rawShot.visualDescription || '',
+                dialogue: rawShot.dialogue || '无',
+                visualEffects: rawShot.visualEffects || '',
+                audioEffects: rawShot.audioEffects || '',
+                startTime,
+                endTime
+            };
+        });
+
+        console.log('[generateDetailedStoryboard] Successfully generated', shots.length, 'shots');
+        return shots;
+    } catch (e) {
+        console.error("[generateDetailedStoryboard] Error:", e);
+        throw new Error("分镜生成格式错误，请重试");
+    }
+};
+
+// Helper function to extract completed shot objects from streaming JSON
+function extractCompletedShots(text: string): { completed: any[], remaining: string } {
+    const completed: any[] = [];
+    let remaining = text;
+
+    // Remove markdown code blocks if present
+    remaining = remaining.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    // Find array start
+    const arrayStartIndex = remaining.indexOf('[');
+    if (arrayStartIndex === -1) {
+        return { completed: [], remaining: text };
+    }
+
+    remaining = remaining.substring(arrayStartIndex + 1);
+
+    // Try to extract complete objects
+    let depth = 0;
+    let currentObject = '';
+    let inString = false;
+    let escapeNext = false;
+
+    for (let i = 0; i < remaining.length; i++) {
+        const char = remaining[i];
+
+        if (escapeNext) {
+            currentObject += char;
+            escapeNext = false;
+            continue;
+        }
+
+        if (char === '\\') {
+            escapeNext = true;
+            currentObject += char;
+            continue;
+        }
+
+        if (char === '"') {
+            inString = !inString;
+            currentObject += char;
+            continue;
+        }
+
+        if (!inString) {
+            if (char === '{') {
+                depth++;
+                currentObject += char;
+            } else if (char === '}') {
+                depth--;
+                currentObject += char;
+
+                // Complete object found
+                if (depth === 0 && currentObject.trim()) {
+                    try {
+                        const parsed = JSON.parse(currentObject);
+                        completed.push(parsed);
+                        currentObject = '';
+                    } catch (e) {
+                        // Not yet complete, continue
+                    }
+                }
+            } else if (char === ',' && depth === 0) {
+                // Skip commas between objects
+                currentObject = '';
+            } else {
+                currentObject += char;
+            }
+        } else {
+            currentObject += char;
+        }
+    }
+
+    return { completed, remaining: currentObject };
+}
+
+// Helper function to extract final shots from remaining text
+function extractFinalShots(text: string): any[] {
+    try {
+        // Clean up the text
+        let cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        // If it's not wrapped in array brackets, try to wrap it
+        if (!cleaned.startsWith('[')) {
+            cleaned = '[' + cleaned;
+        }
+        if (!cleaned.endsWith(']')) {
+            cleaned = cleaned + ']';
+        }
+
+        // Try to parse as array
+        const parsed = JSON.parse(cleaned);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        console.error('Failed to parse final shots:', e);
+        return [];
+    }
+}
 
 export const generateCinematicStoryboard = async (
     episodeScript: string,

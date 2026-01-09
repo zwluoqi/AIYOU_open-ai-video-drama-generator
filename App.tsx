@@ -972,11 +972,75 @@ export const App = () => {
 
   // --- Main Action Handler ---
   const handleNodeAction = useCallback(async (id: string, promptOverride?: string) => {
-      const node = nodesRef.current.find(n => n.id === id); if (!node) return;
+      console.log('[handleNodeAction] Called with id:', id, 'promptOverride:', promptOverride);
+      const node = nodesRef.current.find(n => n.id === id);
+      console.log('[handleNodeAction] Found node:', node?.type, 'data.prompt length:', node?.data?.prompt?.length);
+      if (!node) return;
       handleNodeUpdate(id, { error: undefined });
       setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.WORKING } : n));
 
       try {
+          // Handle PROMPT_INPUT storyboard generation
+          if (node.type === NodeType.PROMPT_INPUT && promptOverride === 'generate-storyboard') {
+              console.log('[handleNodeAction] Entering storyboard generation block');
+              const episodeContent = node.data.prompt || '';
+              if (!episodeContent || episodeContent.length < 50) {
+                  throw new Error('剧本内容太短，无法生成分镜');
+              }
+
+              // Extract episode title from content (first line or use default)
+              const lines = episodeContent.split('\n');
+              const episodeTitle = lines[0].replace(/^#+\s*/, '').trim() || '未命名剧集';
+
+              // Find parent SCRIPT_EPISODE node and its connected SCRIPT_PLANNER to get configured duration
+              const parentEpisodeNode = nodesRef.current.find(n => n.type === NodeType.SCRIPT_EPISODE && n.id && node.inputs.includes(n.id));
+              let configuredDuration = 60; // default 1 minute in seconds
+              let visualStyle: 'REAL' | 'ANIME' | '3D' = 'ANIME';
+
+              if (parentEpisodeNode) {
+                  // Find SCRIPT_PLANNER connected to the SCRIPT_EPISODE
+                  const plannerNode = nodesRef.current.find(n =>
+                      n.type === NodeType.SCRIPT_PLANNER &&
+                      parentEpisodeNode.inputs.includes(n.id)
+                  );
+
+                  if (plannerNode && plannerNode.data.scriptDuration) {
+                      // Convert minutes to seconds
+                      configuredDuration = plannerNode.data.scriptDuration * 60;
+                      console.log('[Duration] Using configured duration from SCRIPT_PLANNER:', configuredDuration, 'seconds');
+                  }
+
+                  if (plannerNode && plannerNode.data.scriptVisualStyle) {
+                      visualStyle = plannerNode.data.scriptVisualStyle;
+                  }
+              }
+
+              const estimatedDuration = configuredDuration;
+
+              // Generate detailed storyboard
+              const { generateDetailedStoryboard } = await import('./services/geminiService');
+
+              const shots = await generateDetailedStoryboard(
+                  episodeTitle,
+                  episodeContent,
+                  estimatedDuration,
+                  visualStyle
+              );
+
+              // Update with complete storyboard
+              const storyboard: import('./types').EpisodeStoryboard = {
+                  episodeTitle,
+                  totalDuration: shots.reduce((sum, shot) => sum + shot.duration, 0),
+                  totalShots: shots.length,
+                  shots,
+                  visualStyle
+              };
+
+              handleNodeUpdate(id, { episodeStoryboard: storyboard });
+              setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
+              return;
+          }
+
           // Handle DRAMA_ANALYZER extract action
           if (node.type === NodeType.DRAMA_ANALYZER && promptOverride === 'extract') {
               const selectedFields = node.data.selectedFields || [];
@@ -1413,6 +1477,9 @@ export const App = () => {
           }
           setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
       } catch (e: any) {
+          console.error('[handleNodeAction] Error caught:', e);
+          console.error('[handleNodeAction] Error message:', e.message);
+          console.error('[handleNodeAction] Error stack:', e.stack);
           handleNodeUpdate(id, { error: e.message });
           setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.ERROR } : n));
       }

@@ -37,6 +37,42 @@ export interface StoryboardShot {
     duration?: number;
 }
 
+// New detailed storyboard shot for episode breakdown
+export interface DetailedStoryboardShot {
+    id: string;
+    shotNumber: number;
+    duration: number; // 3-5 seconds
+
+    // Basic info
+    scene: string;
+    characters: string[];
+
+    // Camera info
+    shotType: string;
+    cameraAngle: string;
+    cameraMovement: string;
+
+    // Content
+    visualDescription: string;
+    dialogue: string;
+
+    // Effects
+    visualEffects: string;
+    audioEffects: string;
+
+    // Timeline
+    startTime: number;
+    endTime: number;
+}
+
+export interface EpisodeStoryboard {
+    episodeTitle: string;
+    totalDuration: number; // seconds
+    totalShots: number;
+    shots: DetailedStoryboardShot[];
+    visualStyle: string;
+}
+
 export interface CharacterProfile {
     id: string;
     name: string;
@@ -124,6 +160,9 @@ export interface AppNode {
     
     // Input Management
     sortedInputIds?: string[]; // Order of input nodes for multi-image composition
+
+    // Episode Storyboard (for PROMPT_INPUT nodes that are episode scripts)
+    episodeStoryboard?: EpisodeStoryboard; // Detailed storyboard breakdown
 
     // Drama Analyzer Specifics
     dramaName?: string; // 剧名

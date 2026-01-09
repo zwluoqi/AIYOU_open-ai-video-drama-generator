@@ -575,8 +575,276 @@ const NodeComponent: React.FC<NodeProps> = ({
     );
   };
 
+  // State for shot editing modal
+  const [editingShot, setEditingShot] = useState<import('../types').DetailedStoryboardShot | null>(null);
+  const [editingShotIndex, setEditingShotIndex] = useState<number>(-1);
+
   const renderMediaContent = () => {
       if (node.type === NodeType.PROMPT_INPUT) {
+          // If episodeStoryboard exists, show storyboard view
+          if (node.data.episodeStoryboard && node.data.episodeStoryboard.shots.length > 0) {
+              const storyboard = node.data.episodeStoryboard;
+              const shots = storyboard.shots;
+
+              return (
+                  <div className="w-full h-full flex flex-col overflow-hidden relative bg-[#1c1c1e]">
+                      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+                          {shots.map((shot, idx) => (
+                              <div key={shot.id} className="flex gap-3 p-3 rounded-xl bg-black/40 border border-white/5 hover:bg-black/60 transition-colors">
+                                  {/* Shot Number Badge */}
+                                  <div className="shrink-0 w-10 h-10 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+                                      <span className="text-sm font-bold text-indigo-300">{shot.shotNumber}</span>
+                                  </div>
+
+                                  {/* Shot Details */}
+                                  <div className="flex-1 flex flex-col gap-2 min-w-0">
+                                      <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1 min-w-0">
+                                              <div className="text-[10px] font-bold text-indigo-300 mb-1">{shot.scene}</div>
+                                              <div className="text-[9px] text-slate-400">
+                                                  {shot.characters.length > 0 && (
+                                                      <span className="mr-2">👤 {shot.characters.join(', ')}</span>
+                                                  )}
+                                              </div>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                              <span className="text-[9px] font-mono text-slate-500">{shot.duration}s</span>
+                                              <button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setEditingShot({ ...shot });
+                                                      setEditingShotIndex(idx);
+                                                  }}
+                                                  disabled={isWorking}
+                                                  className="p-1 rounded bg-white/5 hover:bg-white/10 text-slate-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
+                                                  title="编辑分镜"
+                                              >
+                                                  <Edit size={12} />
+                                              </button>
+                                          </div>
+                                      </div>
+
+                                      <div className="text-[10px] text-slate-300 leading-relaxed">
+                                          {shot.visualDescription}
+                                      </div>
+
+                                      <div className="flex flex-wrap gap-1.5 mt-1">
+                                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[8px] text-slate-500">
+                                              📹 {shot.shotType}
+                                          </span>
+                                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[8px] text-slate-500">
+                                              📐 {shot.cameraAngle}
+                                          </span>
+                                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[8px] text-slate-500">
+                                              🎬 {shot.cameraMovement}
+                                          </span>
+                                      </div>
+
+                                      {shot.dialogue && shot.dialogue !== '无' && (
+                                          <div className="mt-1 px-2 py-1.5 bg-black/40 border border-white/5 rounded text-[9px] text-cyan-300">
+                                              💬 {shot.dialogue}
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
+                          ))}
+
+                          {/* Show loading indicator if working */}
+                          {isWorking && (
+                              <div className="flex items-center justify-center gap-2 p-4 text-indigo-400">
+                                  <Loader2 size={16} className="animate-spin" />
+                                  <span className="text-xs">正在生成更多分镜...</span>
+                              </div>
+                          )}
+                      </div>
+
+                      {/* Summary Bar */}
+                      <div className="shrink-0 px-4 py-2 bg-black/60 border-t border-white/5 flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400">
+                              共 {storyboard.totalShots} 个分镜
+                          </span>
+                          <span className="text-slate-400">
+                              总时长 {Math.floor(storyboard.totalDuration / 60)}:{(storyboard.totalDuration % 60).toString().padStart(2, '0')}
+                          </span>
+                      </div>
+
+                      {/* Edit Shot Modal */}
+                      {editingShot && (
+                          <div
+                              className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999]"
+                              onClick={() => setEditingShot(null)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                          >
+                              <div
+                                  className="bg-[#1c1c1e] border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto custom-scrollbar m-4"
+                                  onClick={(e) => e.stopPropagation()}
+                              >
+                                  <div className="flex items-center justify-between mb-4">
+                                      <h3 className="text-lg font-bold text-white">编辑分镜 #{editingShot.shotNumber}</h3>
+                                      <button
+                                          onClick={() => setEditingShot(null)}
+                                          className="p-1 hover:bg-white/10 rounded transition-colors"
+                                      >
+                                          <X size={20} className="text-slate-400" />
+                                      </button>
+                                  </div>
+
+                                  <div className="space-y-4">
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-1">场景</label>
+                                          <input
+                                              type="text"
+                                              value={editingShot.scene}
+                                              onChange={(e) => setEditingShot({ ...editingShot, scene: e.target.value })}
+                                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                          />
+                                      </div>
+
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-1">角色 (逗号分隔)</label>
+                                          <input
+                                              type="text"
+                                              value={editingShot.characters.join(', ')}
+                                              onChange={(e) => setEditingShot({
+                                                  ...editingShot,
+                                                  characters: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                                              })}
+                                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                          />
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                              <label className="block text-xs text-slate-400 mb-1">时长 (秒)</label>
+                                              <input
+                                                  type="number"
+                                                  min="1"
+                                                  max="10"
+                                                  step="0.5"
+                                                  value={editingShot.duration}
+                                                  onChange={(e) => setEditingShot({ ...editingShot, duration: parseFloat(e.target.value) || 3 })}
+                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                              />
+                                          </div>
+                                          <div>
+                                              <label className="block text-xs text-slate-400 mb-1">镜头类型</label>
+                                              <input
+                                                  type="text"
+                                                  value={editingShot.shotType}
+                                                  onChange={(e) => setEditingShot({ ...editingShot, shotType: e.target.value })}
+                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                              />
+                                          </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                              <label className="block text-xs text-slate-400 mb-1">拍摄角度</label>
+                                              <input
+                                                  type="text"
+                                                  value={editingShot.cameraAngle}
+                                                  onChange={(e) => setEditingShot({ ...editingShot, cameraAngle: e.target.value })}
+                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                              />
+                                          </div>
+                                          <div>
+                                              <label className="block text-xs text-slate-400 mb-1">运镜方式</label>
+                                              <input
+                                                  type="text"
+                                                  value={editingShot.cameraMovement}
+                                                  onChange={(e) => setEditingShot({ ...editingShot, cameraMovement: e.target.value })}
+                                                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                              />
+                                          </div>
+                                      </div>
+
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-1">画面描述</label>
+                                          <textarea
+                                              value={editingShot.visualDescription}
+                                              onChange={(e) => setEditingShot({ ...editingShot, visualDescription: e.target.value })}
+                                              rows={4}
+                                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none custom-scrollbar"
+                                          />
+                                      </div>
+
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-1">对白</label>
+                                          <textarea
+                                              value={editingShot.dialogue}
+                                              onChange={(e) => setEditingShot({ ...editingShot, dialogue: e.target.value })}
+                                              rows={2}
+                                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none custom-scrollbar"
+                                          />
+                                      </div>
+
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-1">视觉效果</label>
+                                          <input
+                                              type="text"
+                                              value={editingShot.visualEffects}
+                                              onChange={(e) => setEditingShot({ ...editingShot, visualEffects: e.target.value })}
+                                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                          />
+                                      </div>
+
+                                      <div>
+                                          <label className="block text-xs text-slate-400 mb-1">音效</label>
+                                          <input
+                                              type="text"
+                                              value={editingShot.audioEffects}
+                                              onChange={(e) => setEditingShot({ ...editingShot, audioEffects: e.target.value })}
+                                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                          />
+                                      </div>
+                                  </div>
+
+                                  <div className="flex gap-3 mt-6">
+                                      <button
+                                          onClick={() => setEditingShot(null)}
+                                          className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-white transition-colors"
+                                      >
+                                          取消
+                                      </button>
+                                      <button
+                                          onClick={() => {
+                                              if (editingShotIndex >= 0 && node.data.episodeStoryboard) {
+                                                  const updatedShots = [...node.data.episodeStoryboard.shots];
+                                                  updatedShots[editingShotIndex] = editingShot;
+
+                                                  // Recalculate start/end times
+                                                  let currentTime = 0;
+                                                  updatedShots.forEach(shot => {
+                                                      shot.startTime = currentTime;
+                                                      shot.endTime = currentTime + shot.duration;
+                                                      currentTime = shot.endTime;
+                                                  });
+
+                                                  const updatedStoryboard = {
+                                                      ...node.data.episodeStoryboard,
+                                                      shots: updatedShots,
+                                                      totalDuration: updatedShots.reduce((sum, shot) => sum + shot.duration, 0),
+                                                      totalShots: updatedShots.length
+                                                  };
+
+                                                  onUpdate(node.id, { episodeStoryboard: updatedStoryboard });
+                                                  setEditingShot(null);
+                                                  setEditingShotIndex(-1);
+                                              }
+                                          }}
+                                          className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-500 to-violet-500 hover:shadow-lg hover:shadow-indigo-500/20 rounded-lg text-sm font-bold text-white transition-all"
+                                      >
+                                          保存
+                                      </button>
+                                  </div>
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              );
+          }
+
+          // Default text input view
           const isCollapsed = (node.height || 360) < 100;
           return (
             <div className="w-full h-full flex flex-col group/text relative">
@@ -1474,6 +1742,35 @@ const NodeComponent: React.FC<NodeProps> = ({
                         >
                             {isWorking ? <Loader2 className="animate-spin" size={12} /> : <Wand2 size={12} />}
                             <span>{node.data.generatedEpisodes && node.data.generatedEpisodes.length > 0 ? '重新生成' : '生成分集脚本'}</span>
+                        </button>
+                    </div>
+                ) : (() => {
+                    const isEpisodeChild = node.type === NodeType.PROMPT_INPUT && allNodes?.some(n => node.inputs.includes(n.id) && n.type === NodeType.SCRIPT_EPISODE);
+                    if (node.type === NodeType.PROMPT_INPUT) {
+                        console.log('[Node Render] PROMPT_INPUT node:', node.id, 'isEpisodeChild:', isEpisodeChild, 'inputs:', node.inputs);
+                        console.log('[Node Render] AllNodes episode check:', allNodes?.filter(n => n.type === NodeType.SCRIPT_EPISODE).map(n => n.id));
+                    }
+                    return isEpisodeChild;
+                })() ? (
+                    // Special handling for episode child nodes - only show storyboard button
+                    <div className="flex flex-col gap-2 p-2">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                console.log('[Node] Button clicked, node.id:', node.id, 'isWorking:', isWorking);
+                                console.log('[Node] Node data.prompt:', node.data.prompt?.substring(0, 100));
+                                onAction(node.id, 'generate-storyboard');
+                            }}
+                            disabled={isWorking}
+                            className={`
+                                w-full flex items-center justify-center gap-2 px-4 py-2 rounded-[10px] font-bold text-[10px] tracking-wide transition-all duration-300
+                                ${isWorking
+                                    ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white hover:shadow-lg hover:shadow-indigo-500/20 hover:scale-[1.02]'}
+                            `}
+                        >
+                            {isWorking ? <Loader2 className="animate-spin" size={14} /> : <Film size={14} />}
+                            <span>拆分为影视分镜</span>
                         </button>
                     </div>
                 ) : (
