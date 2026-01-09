@@ -99,6 +99,7 @@ export interface AppNode {
     // Script Episode Specifics
     selectedChapter?: string; // The chapter string from outline
     episodeSplitCount?: number; // 1-10
+    episodeModificationSuggestion?: string; // User's modification suggestions for regeneration
     generatedEpisodes?: { title: string, content: string, characters: string }[]; // Store generated episodes for downstream use
 
     // Storyboard Generator Specifics

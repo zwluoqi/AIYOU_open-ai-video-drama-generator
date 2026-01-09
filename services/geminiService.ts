@@ -370,6 +370,7 @@ const SCRIPT_EPISODE_INSTRUCTION = `
 3. 拆分集数 (Split Count): [N]
 4. 单集时长参考 (Duration Constraint)
 5. 视觉风格 (Visual Style): [STYLE]
+6. 修改建议 (Modification Suggestions): [如果提供] - 用户针对之前生成版本的修改意见
 
 **输出要求：**
 请直接输出一个 **JSON 数组**，不要包含 markdown 代码块标记（如 \`\`\`json），只输出纯 JSON 字符串。
@@ -389,6 +390,7 @@ const SCRIPT_EPISODE_INSTRUCTION = `
 2. 剧本内容 (content) 必须包含画面感强的场景描述 (Scene Action) 和精彩对白 (Dialogue)。
 3. 确保 N 个剧集能够完整覆盖所选章节的情节，并且每集结尾都要有悬念 (Cliffhanger)。
 4. 场景描述应体现 [STYLE] 的视觉特点。
+5. **如果提供了修改建议，请根据建议调整剧本内容，优化情节、对白或场景描述。**
 `;
 
 const CINEMATIC_STORYBOARD_INSTRUCTION = `
@@ -731,7 +733,8 @@ export const generateScriptEpisodes = async (
     chapter: string,
     splitCount: number,
     duration: number,
-    style?: string
+    style?: string,
+    modificationSuggestion?: string
 ): Promise<{ title: string, content: string, characters: string }[]> => {
     const ai = getClient();
     const prompt = `
@@ -740,13 +743,14 @@ export const generateScriptEpisodes = async (
     Split into ${splitCount} episodes.
     Target Duration per episode: ${duration} minutes.
     Visual Style: ${style || 'N/A'}
+    ${modificationSuggestion ? `\n修改建议 (User Modification Suggestions): ${modificationSuggestion}` : ''}
     `;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        config: { 
+        config: {
             systemInstruction: SCRIPT_EPISODE_INSTRUCTION,
-            responseMimeType: 'application/json' 
+            responseMimeType: 'application/json'
         },
         contents: { parts: [{ text: prompt }] }
     });

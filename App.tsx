@@ -915,7 +915,8 @@ export const App = () => {
               if (n?.type === NodeType.PROMPT_INPUT) return n.data.prompt;
               if (n?.type === NodeType.VIDEO_ANALYZER) return n.data.analysis;
               if (n?.type === NodeType.SCRIPT_EPISODE && n.data.generatedEpisodes) {
-                  return n.data.generatedEpisodes.map(ep => `Title: ${ep.title}\nCharacters: ${ep.characters}\nContent: ${ep.content}`).join('\n\n');
+                  // 只传递角色列表和标题，不传完整剧本内容
+                  return n.data.generatedEpisodes.map(ep => `${ep.title}\n角色: ${ep.characters}`).join('\n');
               }
               if (n?.type === NodeType.SCRIPT_PLANNER) return n.data.scriptOutline;
               return null;
@@ -1029,7 +1030,8 @@ export const App = () => {
               if (n?.type === NodeType.PROMPT_INPUT) return n.data.prompt;
               if (n?.type === NodeType.VIDEO_ANALYZER) return n.data.analysis;
               if (n?.type === NodeType.SCRIPT_EPISODE && n.data.generatedEpisodes) {
-                  return n.data.generatedEpisodes.map(ep => `Title: ${ep.title}\nCharacters: ${ep.characters}\nContent: ${ep.content}`).join('\n\n');
+                  // 只传递角色列表和标题，不传完整剧本内容
+                  return n.data.generatedEpisodes.map(ep => `${ep.title}\n角色: ${ep.characters}`).join('\n');
               }
               if (n?.type === NodeType.SCRIPT_PLANNER) return n.data.scriptOutline;
               if (n?.type === NodeType.DRAMA_ANALYZER) {
@@ -1201,11 +1203,12 @@ export const App = () => {
               }
 
               const episodes = await generateScriptEpisodes(
-                  planner.data.scriptOutline, 
-                  node.data.selectedChapter, 
+                  planner.data.scriptOutline,
+                  node.data.selectedChapter,
                   node.data.episodeSplitCount || 3,
                   planner.data.scriptDuration || 1,
-                  currentStyle // Pass Visual Style
+                  currentStyle, // Pass Visual Style
+                  node.data.episodeModificationSuggestion // Pass Modification Suggestion
               );
 
               // ... (Episode Expansion Logic UNCHANGED) ...

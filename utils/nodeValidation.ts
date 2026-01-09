@@ -19,7 +19,8 @@ export const NODE_DEPENDENCY_RULES: Record<NodeType, {
       NodeType.IMAGE_GENERATOR,
       NodeType.VIDEO_GENERATOR,
       NodeType.AUDIO_GENERATOR,
-      NodeType.SCRIPT_PLANNER
+      NodeType.SCRIPT_PLANNER,
+      NodeType.CHARACTER_NODE
     ],
     minInputs: 0,
     maxInputs: 0,
@@ -155,7 +156,8 @@ export const NODE_DEPENDENCY_RULES: Record<NodeType, {
   [NodeType.CHARACTER_NODE]: {
     allowedInputs: [
       NodeType.SCRIPT_PLANNER,
-      NodeType.SCRIPT_EPISODE
+      NodeType.SCRIPT_EPISODE,
+      NodeType.PROMPT_INPUT
     ],
     allowedOutputs: [
       NodeType.IMAGE_GENERATOR,
@@ -219,14 +221,14 @@ export function validateConnection(
   if (!fromRules.allowedOutputs.includes(toNode.type)) {
     return {
       valid: false,
-      error: `"${getNodeDisplayName(fromNode.type)}" 不能连接到 "${getNodeDisplayName(toNode.type)}"`
+      error: `"${fromNode.title}" 不能连接到 "${toNode.title}"`
     };
   }
 
   if (!toRules.allowedInputs.includes(fromNode.type)) {
     return {
       valid: false,
-      error: `"${getNodeDisplayName(toNode.type)}" 不接受来自 "${getNodeDisplayName(fromNode.type)}" 的输入`
+      error: `"${toNode.title}" 不接受来自 "${fromNode.title}" 的输入`
     };
   }
 
@@ -236,7 +238,7 @@ export function validateConnection(
   if (currentInputs.length >= toRules.maxInputs) {
     return {
       valid: false,
-      error: `"${getNodeDisplayName(toNode.type)}" 最多只能接收 ${toRules.maxInputs} 个输入`
+      error: `"${toNode.title}" 最多只能接收 ${toRules.maxInputs} 个输入`
     };
   }
 

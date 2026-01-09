@@ -285,27 +285,11 @@ const AudioVisualizer = ({ isPlaying }: { isPlaying: boolean }) => (
 );
 
 // Episode Viewer Component - Single component to display all generated episodes
-const EpisodeViewer = ({ episodes, onClear }: { episodes: { title: string, content: string, characters: string }[], onClear?: () => void }) => {
+const EpisodeViewer = ({ episodes }: { episodes: { title: string, content: string, characters: string }[] }) => {
     const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
 
     return (
         <div className="w-full h-full flex flex-col bg-[#1c1c1e] relative overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-white/5 shrink-0">
-                <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
-                    <ScrollText size={14} className="text-teal-400" />
-                    Generated Episodes ({episodes.length})
-                </span>
-                {onClear && (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onClear(); }} 
-                        className="p-1.5 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded-md transition-colors"
-                        title="Clear All"
-                    >
-                        <Trash2 size={14} />
-                    </button>
-                )}
-            </div>
-            
             <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
                 {episodes.map((ep, idx) => {
                     const isExpanded = expandedIndex === idx;
@@ -395,28 +379,39 @@ const NodeComponent: React.FC<NodeProps> = ({
       window.addEventListener('mousemove', handleGlobalMouseMove); window.addEventListener('mouseup', handleGlobalMouseUp);
   };
 
-  useEffect(() => {
+  // Function to refresh chapters from planner node
+  const handleRefreshChapters = useCallback(() => {
+      console.log('🔄 刷新章节列表...');
       if (node.type === NodeType.SCRIPT_EPISODE && allNodes) {
           const plannerNode = allNodes.find(n => node.inputs.includes(n.id) && n.type === NodeType.SCRIPT_PLANNER);
+          console.log('📖 找到上游剧本大纲节点:', plannerNode?.id);
           if (plannerNode && plannerNode.data.scriptOutline) {
-              const regex = /^##\s*(.+)$/gm;
+              console.log('📝 剧本大纲内容长度:', plannerNode.data.scriptOutline.length);
+              console.log('📄 完整剧本大纲:\n', plannerNode.data.scriptOutline);
+              // 匹配格式：*   **## 第一章：都市异象 (Episodes 1-2)** - 描述
+              const regex1 = /##\s+(第[一二三四五六七八九十\d]+章[：:][^\(\*]+|最终章[：:][^\(\*]+)/gm;
               const matches = [];
               let match;
-              while ((match = regex.exec(plannerNode.data.scriptOutline)) !== null) {
+              while ((match = regex1.exec(plannerNode.data.scriptOutline)) !== null) {
                   matches.push(match[1].trim());
               }
+              console.log('✅ 提取到章节数量:', matches.length, matches);
               if (matches.length > 0) {
-                  if (JSON.stringify(availableChapters) !== JSON.stringify(matches)) {
-                      setAvailableChapters(matches);
-                      // Auto-select first chapter if none selected
-                      if (!node.data.selectedChapter) {
-                          onUpdate(node.id, { selectedChapter: matches[0] });
-                      }
+                  setAvailableChapters(matches);
+                  // Auto-select first chapter if none selected
+                  if (!node.data.selectedChapter) {
+                      onUpdate(node.id, { selectedChapter: matches[0] });
                   }
               }
+          } else {
+              console.log('⚠️ 未找到剧本大纲节点或大纲内容为空');
           }
       }
-  }, [node.type, node.inputs, allNodes, node.data.selectedChapter]);
+  }, [node.type, node.inputs, node.id, node.data.selectedChapter, allNodes, onUpdate]);
+
+  useEffect(() => {
+      handleRefreshChapters();
+  }, [handleRefreshChapters]);
 
   React.useEffect(() => {
       if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); setVideoBlobUrl(null); }
@@ -530,30 +525,53 @@ const NodeComponent: React.FC<NodeProps> = ({
   const nodeWidth = node.width || DEFAULT_NODE_WIDTH;
   const hasInputs = inputAssets && inputAssets.length > 0;
 
-  const renderTopBar = () => {
-    const showTopBar = isSelected || isHovered;
+  // 固定显示的标题栏
+  const renderTitleBar = () => {
+    const config = getNodeConfig();
+    const IconComponent = config.icon;
+
     return (
-    <div className={`absolute -top-10 left-0 w-full flex items-center justify-between px-1 transition-all duration-300 ${showTopBar ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
-        <div className="flex items-center gap-1.5 pointer-events-auto">
-            {node.type === NodeType.VIDEO_GENERATOR && (<VideoModeSelector currentMode={generationMode} onSelect={(mode) => onUpdate(node.id, { generationMode: mode })} />)}
-             {(node.data.image || node.data.videoUri || node.data.audioUri) && (
-                <div className="flex items-center gap-1">
-                    <button onClick={handleDownload} className="p-1.5 bg-black/40 border border-white/10 backdrop-blur-md rounded-md text-slate-400 hover:text-white hover:border-white/30 transition-colors" title="下载"><Download size={14} /></button>
-                    {node.type !== NodeType.AUDIO_GENERATOR && <button onClick={handleExpand} className="p-1.5 bg-black/40 border border-white/10 backdrop-blur-md rounded-md text-slate-400 hover:text-white hover:border-white/30 transition-colors" title="全屏预览"><Maximize2 size={14} /></button>}
-                </div>
-             )}
+      <div className="absolute -top-9 left-0 w-full flex items-center justify-between px-2 pointer-events-auto">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#1c1c1e]/90 backdrop-blur-xl border border-white/10 rounded-full shadow-lg">
+          <IconComponent size={12} className={config.color} />
+          {isEditingTitle ? (
+            <input
+              className="bg-transparent border-none outline-none text-slate-200 text-xs font-semibold w-32"
+              value={tempTitle}
+              onChange={(e) => setTempTitle(e.target.value)}
+              onBlur={handleTitleSave}
+              onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()}
+              onMouseDown={e => e.stopPropagation()}
+              autoFocus
+            />
+          ) : (
+            <span
+              className="text-xs font-semibold text-slate-200 hover:text-white cursor-text transition-colors"
+              onClick={() => setIsEditingTitle(true)}
+              title="点击编辑节点名称"
+            >
+              {node.title}
+            </span>
+          )}
+          {isWorking && <Loader2 className="animate-spin w-3 h-3 text-cyan-400 ml-1" />}
         </div>
-        <div className="flex items-center gap-2 pointer-events-auto">
-             {isWorking && <div className="bg-[#2c2c2e]/90 backdrop-blur-md p-1.5 rounded-full border border-white/10"><Loader2 className="animate-spin w-3 h-3 text-cyan-400" /></div>}
-            <div className={`px-2 py-1 flex items-center gap-2`}>
-                {isEditingTitle ? (
-                    <input className="bg-transparent border-none outline-none text-slate-400 text-[10px] font-bold uppercase tracking-wider w-24 text-right" value={tempTitle} onChange={(e) => setTempTitle(e.target.value)} onBlur={handleTitleSave} onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()} onMouseDown={e => e.stopPropagation()} autoFocus />
-                ) : (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 cursor-text text-right" onClick={() => setIsEditingTitle(true)}>{node.title}</span>
-                )}
-            </div>
-        </div>
-    </div>
+      </div>
+    );
+  };
+
+  // 悬停工具栏（用于操作按钮）
+  const renderHoverToolbar = () => {
+    const showToolbar = isSelected || isHovered;
+    return (
+      <div className={`absolute -top-9 right-0 flex items-center gap-1.5 px-1 transition-all duration-300 pointer-events-auto ${showToolbar ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'}`}>
+        {node.type === NodeType.VIDEO_GENERATOR && (<VideoModeSelector currentMode={generationMode} onSelect={(mode) => onUpdate(node.id, { generationMode: mode })} />)}
+        {(node.data.image || node.data.videoUri || node.data.audioUri) && (
+          <div className="flex items-center gap-1">
+            <button onClick={handleDownload} className="p-1.5 bg-black/40 border border-white/10 backdrop-blur-md rounded-md text-slate-400 hover:text-white hover:border-white/30 transition-colors" title="下载"><Download size={14} /></button>
+            {node.type !== NodeType.AUDIO_GENERATOR && <button onClick={handleExpand} className="p-1.5 bg-black/40 border border-white/10 backdrop-blur-md rounded-md text-slate-400 hover:text-white hover:border-white/30 transition-colors" title="全屏预览"><Maximize2 size={14} /></button>}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -562,38 +580,31 @@ const NodeComponent: React.FC<NodeProps> = ({
           const isCollapsed = (node.height || 360) < 100;
           return (
             <div className="w-full h-full flex flex-col group/text relative">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-white/5 shrink-0">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                        <Type size={12} className="text-amber-400 shrink-0" />
-                        <span className="text-[11px] font-bold text-slate-200 truncate uppercase tracking-wide" title={node.title}>
-                            {node.title}
-                        </span>
-                    </div>
-                    <button 
+                <div className={`flex-1 bg-black/10 relative overflow-hidden backdrop-blur-sm transition-all ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
+                    {/* 折叠/展开按钮 */}
+                    <button
                         onClick={(e) => {
                             e.stopPropagation();
                             const currentH = node.height || 360;
                             const targetH = currentH < 100 ? 360 : 50;
                             onUpdate(node.id, {}, { height: targetH });
                         }}
-                        className="p-1 text-slate-500 hover:text-white transition-colors rounded hover:bg-white/10"
-                        title={isCollapsed ? "Expand" : "Collapse"}
+                        className="absolute top-2 right-2 p-1.5 bg-black/40 border border-white/10 backdrop-blur-md rounded-md text-slate-400 hover:text-white hover:border-white/30 transition-colors z-10"
+                        title={isCollapsed ? "展开" : "折叠"}
                         onMouseDown={e => e.stopPropagation()}
                     >
                         {isCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                     </button>
-                </div>
-                <div className={`flex-1 bg-black/10 relative overflow-hidden backdrop-blur-sm transition-all ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
-                    <textarea 
-                        className="w-full h-full bg-transparent resize-none focus:outline-none text-sm text-slate-200 placeholder-slate-500 font-medium leading-relaxed custom-scrollbar selection:bg-amber-500/30 p-4" 
-                        placeholder="输入您的创意构想..." 
-                        value={localPrompt} 
-                        onChange={(e) => setLocalPrompt(e.target.value)} 
-                        onBlur={commitPrompt} 
-                        onKeyDown={handleCmdEnter} 
-                        onWheel={(e) => e.stopPropagation()} 
-                        onMouseDown={e => e.stopPropagation()} 
-                        maxLength={10000} 
+                    <textarea
+                        className="w-full h-full bg-transparent resize-none focus:outline-none text-sm text-slate-200 placeholder-slate-500 font-medium leading-relaxed custom-scrollbar selection:bg-amber-500/30 p-4"
+                        placeholder="输入您的创意构想..."
+                        value={localPrompt}
+                        onChange={(e) => setLocalPrompt(e.target.value)}
+                        onBlur={commitPrompt}
+                        onKeyDown={handleCmdEnter}
+                        onWheel={(e) => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                        maxLength={10000}
                         disabled={isCollapsed}
                     />
                 </div>
@@ -641,21 +652,18 @@ const NodeComponent: React.FC<NodeProps> = ({
 
       if (node.type === NodeType.SCRIPT_EPISODE) {
           if (node.data.generatedEpisodes && node.data.generatedEpisodes.length > 0) {
-              return <EpisodeViewer episodes={node.data.generatedEpisodes} onClear={() => onUpdate(node.id, { generatedEpisodes: undefined })} />;
+              return <EpisodeViewer episodes={node.data.generatedEpisodes} />;
           }
           
           return (
               <div className="w-full h-full p-6 flex flex-col justify-center items-center gap-4 text-center">
                   <div className="p-4 rounded-2xl bg-black/20 border border-white/5 w-full flex-1 flex flex-col items-center justify-center gap-3">
                       {isWorking ? <Loader2 size={32} className="animate-spin text-teal-500" /> : <ScrollText size={32} className="text-teal-500/50" />}
-                      <div className="flex flex-col gap-1">
-                          <span className="text-sm font-bold text-slate-300">剧本分集生成</span>
-                          <span className="text-[10px] text-slate-500 max-w-[200px] leading-relaxed">
-                              {availableChapters.length > 0 
-                                  ? (node.data.selectedChapter ? `已选择: ${node.data.selectedChapter}` : "请在下方选择章节")
-                                  : "请先连接已生成大纲的剧本节点 (Planner)"}
-                          </span>
-                      </div>
+                      <span className="text-[10px] text-slate-500 max-w-[200px] leading-relaxed">
+                          {availableChapters.length > 0
+                              ? (node.data.selectedChapter ? `已选择: ${node.data.selectedChapter}` : "请在下方选择章节")
+                              : "请先连接已生成大纲的剧本节点 (Planner)"}
+                      </span>
                   </div>
               </div>
           );
@@ -1027,17 +1035,6 @@ const NodeComponent: React.FC<NodeProps> = ({
 
           return (
               <div className="w-full h-full flex flex-col bg-[#1c1c1e] relative overflow-hidden">
-                  {/* Header */}
-                  <div className="px-4 py-3 border-b border-white/5 bg-white/5 shrink-0">
-                      <div className="flex items-center gap-2">
-                          <Sparkles size={14} className="text-cyan-400" />
-                          <span className="text-xs font-bold text-white">剧目精炼</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-1">
-                          来源: {node.data.sourceDramaName || '剧目分析'}
-                      </div>
-                  </div>
-
                   {/* Tags Grid */}
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
                       {Object.keys(refinedData).length > 0 ? (
@@ -1407,9 +1404,21 @@ const NodeComponent: React.FC<NodeProps> = ({
                     <div className="flex flex-col gap-3 p-2">
                         {/* Chapter Selection */}
                         <div className="flex flex-col gap-1">
-                            <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider px-1">选择章节 (Source Chapter)</span>
+                            <div className="flex items-center justify-between px-1">
+                                <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">选择章节 (Source Chapter)</span>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRefreshChapters();
+                                    }}
+                                    className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-cyan-400 transition-colors"
+                                    title="重新获取章节"
+                                >
+                                    <RefreshCw size={10} />
+                                </button>
+                            </div>
                             <div className="relative">
-                                <select 
+                                <select
                                     className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none cursor-pointer hover:bg-white/5 transition-colors"
                                     value={node.data.selectedChapter || ''}
                                     onChange={(e) => onUpdate(node.id, { selectedChapter: e.target.value })}
@@ -1429,29 +1438,42 @@ const NodeComponent: React.FC<NodeProps> = ({
                                 <span>拆分集数 (Episodes)</span>
                                 <span className="text-teal-400">{node.data.episodeSplitCount || 3} 集</span>
                             </div>
-                            <input 
-                                type="range" 
-                                min="1" 
-                                max="10" 
-                                step="1" 
-                                value={node.data.episodeSplitCount || 3} 
-                                onChange={e => onUpdate(node.id, { episodeSplitCount: parseInt(e.target.value) })} 
-                                className="w-full h-1 bg-white/10 rounded-full appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-teal-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none cursor-pointer" 
+                            <input
+                                type="range"
+                                min="1"
+                                max="10"
+                                step="1"
+                                value={node.data.episodeSplitCount || 3}
+                                onChange={e => onUpdate(node.id, { episodeSplitCount: parseInt(e.target.value) })}
+                                className="w-full h-1 bg-white/10 rounded-full appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-teal-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none cursor-pointer"
                             />
                         </div>
 
-                        <button 
-                            onClick={handleActionClick} 
-                            disabled={isWorking || !node.data.selectedChapter} 
+                        {/* Modification Suggestions Input */}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider px-1">修改建议 (Optional)</span>
+                            <textarea
+                                className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none resize-none h-16 custom-scrollbar placeholder:text-slate-600"
+                                placeholder="输入修改建议或留空使用默认设置..."
+                                value={node.data.episodeModificationSuggestion || ''}
+                                onChange={(e) => onUpdate(node.id, { episodeModificationSuggestion: e.target.value })}
+                                onMouseDown={e => e.stopPropagation()}
+                            />
+                        </div>
+
+                        {/* Generate / Regenerate Button */}
+                        <button
+                            onClick={handleActionClick}
+                            disabled={isWorking || !node.data.selectedChapter}
                             className={`
                                 w-full mt-1 flex items-center justify-center gap-2 px-4 py-1.5 rounded-[10px] font-bold text-[10px] tracking-wide transition-all duration-300
-                                ${isWorking || !node.data.selectedChapter 
-                                    ? 'bg-white/5 text-slate-500 cursor-not-allowed' 
+                                ${isWorking || !node.data.selectedChapter
+                                    ? 'bg-white/5 text-slate-500 cursor-not-allowed'
                                     : 'bg-gradient-to-r from-teal-500 to-emerald-500 text-black hover:shadow-lg hover:shadow-teal-500/20 hover:scale-[1.02]'}
                             `}
                         >
                             {isWorking ? <Loader2 className="animate-spin" size={12} /> : <Wand2 size={12} />}
-                            <span>生成分集脚本</span>
+                            <span>{node.data.generatedEpisodes && node.data.generatedEpisodes.length > 0 ? '重新生成' : '生成分集脚本'}</span>
                         </button>
                     </div>
                 ) : (
@@ -1499,7 +1521,8 @@ const NodeComponent: React.FC<NodeProps> = ({
         onContextMenu={(e) => onNodeContextMenu(e, node.id)}
         onWheel={(e) => e.stopPropagation()}
     >
-        {renderTopBar()}
+        {renderTitleBar()}
+        {renderHoverToolbar()}
         <div className={`absolute -left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-white/20 bg-[#1c1c1e] flex items-center justify-center transition-all duration-300 hover:scale-125 cursor-crosshair z-50 shadow-md ${isConnecting ? 'ring-2 ring-cyan-400 animate-pulse' : ''}`} onMouseDown={(e) => onPortMouseDown(e, node.id, 'input')} onMouseUp={(e) => onPortMouseUp(e, node.id, 'input')} title="Input"><Plus size={10} strokeWidth={3} className="text-white/50" /></div>
         <div className={`absolute -right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-white/20 bg-[#1c1c1e] flex items-center justify-center transition-all duration-300 hover:scale-125 cursor-crosshair z-50 shadow-md ${isConnecting ? 'ring-2 ring-purple-400 animate-pulse' : ''}`} onMouseDown={(e) => onPortMouseDown(e, node.id, 'output')} onMouseUp={(e) => onPortMouseUp(e, node.id, 'output')} title="Output"><Plus size={10} strokeWidth={3} className="text-white/50" /></div>
         <div className="w-full h-full flex flex-col relative rounded-[24px] overflow-hidden bg-zinc-900"><div className="flex-1 min-h-0 relative bg-zinc-900">{renderMediaContent()}</div></div>
