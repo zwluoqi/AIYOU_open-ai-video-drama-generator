@@ -12,11 +12,25 @@ export interface APILogEntry {
         prompt?: string;
         options?: any;
         inputs?: any[];
+        inputImagesCount?: number;  // 参考图数量
+        enhancedPrompt?: string;    // 完整的增强提示词
+        generationConfig?: any;     // 生成配置
     };
     response?: {
         success: boolean;
         data?: any;
         error?: string;
+        details?: {              // 详细响应信息
+            generatedCount?: number;
+            images?: Array<{
+                mimeType: string;
+                size: string;
+                index: number;
+            }>;
+            safetyRatings?: any[];
+            finishReason?: string;
+            responseText?: string;
+        };
     };
     duration?: number;        // 请求耗时(ms)
     status: 'pending' | 'success' | 'error';
@@ -47,7 +61,7 @@ class APILogger {
             apiName,
             nodeId: context?.nodeId,
             nodeType: context?.nodeType,
-            request,
+            request: { ...request },  // 保存完整的请求信息
             status: 'pending'
         };
 
@@ -77,10 +91,20 @@ class APILogger {
 
         log.status = 'success';
         log.duration = Date.now() - startTime;
-        log.response = {
-            success: true,
-            data: this.sanitizeResponse(response)
-        };
+
+        // 检查是否有详细调试信息
+        if (response && typeof response === 'object' && '_debugInfo' in response) {
+            log.response = {
+                success: true,
+                data: this.sanitizeResponse(response),
+                details: response._debugInfo
+            };
+        } else {
+            log.response = {
+                success: true,
+                data: this.sanitizeResponse(response)
+            };
+        }
 
         this.saveToStorage();
 
@@ -188,27 +212,28 @@ class APILogger {
     // ===== 私有方法 =====
 
     private sanitizeResponse(response: any): any {
-        // 对于大型响应数据，只保存关键信息
+        // 对于 API 日志调试面板，保留完整信息
         if (typeof response === 'string') {
-            // 截断超长字符串
-            return response.length > 500 ? response.substring(0, 500) + '...' : response;
+            // prompt 等重要文本保留完整内容
+            return response;
         }
 
         if (Array.isArray(response)) {
-            // 数组只保存前3项
-            return response.slice(0, 3).map(item => this.sanitizeResponse(item));
+            // 数组保留所有项，但处理 base64
+            return response.map(item => this.sanitizeResponse(item));
         }
 
         if (typeof response === 'object' && response !== null) {
             const sanitized: any = {};
             for (const [key, value] of Object.entries(response)) {
                 if (key === 'uri' || key === 'src' || key.includes('Url') || key.includes('Uri')) {
-                    // 保留URL
+                    // 保留完整 URL
                     sanitized[key] = value;
                 } else if (typeof value === 'string' && value.startsWith('data:')) {
-                    // Base64数据只保留前缀
+                    // Base64 数据转换为描述信息
                     const match = value.match(/^data:([^;]+);base64,/);
-                    sanitized[key] = match ? `[Base64 ${match[1]}]` : '[Base64 Data]';
+                    const base64Length = value.split(',')[1]?.length || 0;
+                    sanitized[key] = `[Base64 ${match?.[1] || 'image'} - ${base64Length.toLocaleString()} chars]`;
                 } else {
                     sanitized[key] = this.sanitizeResponse(value);
                 }

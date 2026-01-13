@@ -228,17 +228,60 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ isOpen, onClose }) => {
 
                                     {/* Log Details (Expanded) */}
                                     {expandedLogId === log.id && (
-                                        <div className="border-t border-white/10 bg-black/20 p-4 space-y-3">
+                                        <div className="border-t border-white/10 bg-black/20 p-4 space-y-4">
+                                            {/* Enhanced Prompt - 显示在最前面 */}
+                                            {log.request.enhancedPrompt && (
+                                                <div>
+                                                    <h4 className="text-xs font-bold text-cyan-400 mb-2 flex items-center gap-2">
+                                                        <span>完整 Prompt (传给 AI)</span>
+                                                        <span className="px-1.5 py-0.5 bg-cyan-500/20 text-cyan-300 rounded text-[10px]">
+                                                            {log.request.enhancedPrompt?.length || 0} 字符
+                                                        </span>
+                                                    </h4>
+                                                    <div className="bg-black/40 rounded p-3 max-h-96 overflow-y-auto custom-scrollbar">
+                                                        <pre className="text-xs text-slate-200 whitespace-pre-wrap break-words font-mono">
+                                                            {log.request.enhancedPrompt}
+                                                        </pre>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Reference Images */}
+                                            {log.request.inputImagesCount !== undefined && log.request.inputImagesCount > 0 && (
+                                                <div>
+                                                    <h4 className="text-xs font-bold text-green-400 mb-2">
+                                                        参考图数量
+                                                    </h4>
+                                                    <div className="bg-black/40 rounded p-3 text-xs text-green-300">
+                                                        {log.request.inputImagesCount} 张参考图
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* Request */}
                                             <div>
-                                                <h4 className="text-xs font-bold text-slate-400 mb-2">请求参数</h4>
+                                                <h4 className="text-xs font-bold text-slate-400 mb-2">请求配置</h4>
                                                 <div className="bg-black/40 rounded p-3 text-xs text-slate-300 font-mono overflow-x-auto">
-                                                    <pre>{JSON.stringify(log.request, null, 2)}</pre>
+                                                    <pre>{JSON.stringify({
+                                                        model: log.request.model,
+                                                        options: log.request.options,
+                                                        generationConfig: log.request.generationConfig
+                                                    }, null, 2)}</pre>
                                                 </div>
                                             </div>
 
+                                            {/* Response Details */}
+                                            {log.response?.details && (
+                                                <div>
+                                                    <h4 className="text-xs font-bold text-purple-400 mb-2">响应详情</h4>
+                                                    <div className="bg-black/40 rounded p-3 text-xs text-slate-300 font-mono overflow-x-auto">
+                                                        <pre>{JSON.stringify(log.response.details, null, 2)}</pre>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* Response */}
-                                            {log.response && (
+                                            {log.response && !log.response.details && (
                                                 <div>
                                                     <h4 className="text-xs font-bold text-slate-400 mb-2">
                                                         {log.status === 'error' ? '错误信息' : '响应数据'}

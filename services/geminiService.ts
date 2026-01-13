@@ -736,8 +736,10 @@ export const generateImageFromText = async (
                 const ratioMap: Record<string, string> = {
                     '16:9': 'landscape orientation (16:9 aspect ratio, width greater than height)',
                     '9:16': 'portrait orientation (9:16 aspect ratio, height greater than width)',
-                    '4:3': 'landscape orientation (4:3 aspect ratio)',
-                    '3:4': 'portrait orientation (3:4 aspect ratio)',
+                    '4:3': 'landscape orientation (4:3 aspect ratio, standard 4K resolution)',
+                    '3:4': 'portrait orientation (3:4 aspect ratio, standard 4K resolution)',
+                    '3:2': 'landscape orientation (3:2 aspect ratio)',
+                    '2:3': 'portrait orientation (2:3 aspect ratio)',
                     '1:1': 'square orientation (1:1 aspect ratio, equal width and height)',
                     '21:9': 'ultrawide cinematic orientation (21:9 aspect ratio)',
                 };
@@ -1445,6 +1447,7 @@ export const compileMultiFramePrompt = (frames: any[]) => {
 
 export const generateAudio = async (
     prompt: string,
+    model: string,
     referenceAudio?: string,
     options?: { persona?: any, emotion?: any },
     context?: { nodeId?: string; nodeType?: string }
@@ -1464,7 +1467,7 @@ export const generateAudio = async (
             const voiceName = options?.persona?.label === 'Deep Narrative' ? 'Kore' : 'Puck';
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-preview-tts',
+                model: model,
                 contents: { parts },
                 config: {
                     responseModalities: [Modality.AUDIO],
@@ -1482,7 +1485,7 @@ export const generateAudio = async (
             return pcmToWav(audioData);
         },
         {
-            model: 'gemini-2.5-flash-preview-tts',
+            model: model,
             prompt: prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''),
             hasReferenceAudio: !!referenceAudio,
             voiceName: options?.persona?.label === 'Deep Narrative' ? 'Kore' : 'Puck'

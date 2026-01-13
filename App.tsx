@@ -2396,7 +2396,7 @@ export const App = () => {
               const stylePrefix = stylePresetNode?.data.stylePrompt || '';
               const finalPrompt = stylePrefix ? `${stylePrefix}, ${prompt}` : prompt;
 
-              const audioUri = await generateAudio(finalPrompt);
+              const audioUri = await generateAudio(finalPrompt, node.data.model);
               handleNodeUpdate(id, { audioUri: audioUri });
               // Save to local storage
               await saveAudioNodeOutput(id, audioUri, 'AUDIO_GENERATOR');
@@ -2651,17 +2651,39 @@ export const App = () => {
                       return `Panel ${idx + 1}: ${shotPrompt}`;
                   }).join('\n\n');
 
-                  // Calculate correct output aspect ratio
-                  // For a 3x3 grid of 16:9 panels, the overall image should maintain 16:9 ratio
-                  // For a 3x3 grid of 9:16 panels, the overall image should maintain 9:16 ratio
-                  const outputAspectRatio = panelOrientation;
+                  // Calculate correct output aspect ratio and resolution based on grid type
+                  let outputAspectRatio: string;
+                  let resolutionWidth: number;
+                  let resolutionHeight: number;
+
+                  if (gridType === '9') {
+                      // 3x3 grid: standard 16:9 or 9:16
+                      outputAspectRatio = panelOrientation;
+                      if (panelOrientation === '16:9') {
+                          resolutionWidth = 3840;
+                          resolutionHeight = 2160;
+                      } else {
+                          resolutionWidth = 2160;
+                          resolutionHeight = 3840;
+                      }
+                  } else {
+                      // 2x3 or 3x2 grid: 4:3 or 3:4 (standard supported aspect ratios)
+                      if (panelOrientation === '16:9') {
+                          outputAspectRatio = '4:3';
+                          resolutionWidth = 3840;
+                          resolutionHeight = 2880;
+                      } else {
+                          outputAspectRatio = '3:4';
+                          resolutionWidth = 2880;
+                          resolutionHeight = 3840;
+                      }
+                  }
 
                   // Build comprehensive prompt with 4K resolution and subtle panel numbers
                   const gridPrompt = `
 Create a professional cinematic storyboard ${gridLayout} grid layout at 4K resolution.
 
 OVERALL IMAGE SPECS:
-- Resolution: 3840x${panelOrientation === '16:9' ? '2160' : '5120'} (4K UHD)
 - Output Aspect Ratio: ${outputAspectRatio} (${panelOrientation === '16:9' ? 'landscape' : 'portrait'})
 - Grid Layout: ${shotsPerGrid} panels arranged in ${gridLayout} formation
 - Each panel maintains ${panelOrientation} aspect ratio
@@ -2724,7 +2746,10 @@ COMPOSITION REQUIREMENTS:
                           gridPrompt,
                           primaryImageModel,
                           characterReferenceImages,
-                          { aspectRatio: outputAspectRatio, count: 1 },
+                          {
+                              aspectRatio: outputAspectRatio,
+                              count: 1
+                          },
                           { nodeId: id, nodeType: node.type }
                       );
 
