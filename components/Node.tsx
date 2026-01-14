@@ -1,48 +1,50 @@
 
-import { AppNode, NodeStatus, NodeType, StoryboardShot, CharacterProfile } from '../types';
-import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles, ZoomIn, ZoomOut, Minus, Circle, Square, Maximize, Move, RotateCw, TrendingUp, TrendingDown, ArrowRight, ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, Palette, Grid } from 'lucide-react';
+import { AppNode, NodeStatus, NodeType, StoryboardShot, CharacterProfile, SoraModel } from '../types';
+import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles, ZoomIn, ZoomOut, Minus, Circle, Square, Maximize, Move, RotateCw, TrendingUp, TrendingDown, ArrowRight, ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, Palette, Grid, MoveHorizontal, ArrowUpDown } from 'lucide-react';
 import { VideoModeSelector, SceneDirectorOverlay } from './VideoNodeModules';
 import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
+import { getSoraModelById } from '../services/soraConfigService';
 
 const IMAGE_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
 const VIDEO_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
 const IMAGE_RESOLUTIONS = ['1k', '2k', '4k'];
 const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'];
 
-// 专业镜头类型
+// 景别 (Shot Size) - 使用标准影视术语
 const SHOT_TYPES = [
-  { value: '远景 (ELS)', label: '远景', icon: Maximize, desc: 'Extreme Long Shot' },
-  { value: '全景 (LS)', label: '全景', icon: Square, desc: 'Long Shot' },
-  { value: '中景 (MS)', label: '中景', icon: Box, desc: 'Medium Shot' },
-  { value: '中近景 (MCS)', label: '中近景', icon: User, desc: 'Medium Close Shot' },
-  { value: '近景 (CU)', label: '近景', icon: Circle, desc: 'Close Up' },
-  { value: '特写 (ECU)', label: '特写', icon: ZoomIn, desc: 'Extreme Close Up' },
-  { value: '过肩镜头 (OTS)', label: '过肩', icon: Users, desc: 'Over The Shoulder' },
-  { value: '主观镜头 (POV)', label: '主观', icon: Eye, desc: 'Point of View' },
+  { value: '大远景', label: '大远景', icon: Maximize, desc: 'Extreme Long Shot - 人物如蚂蚁，环境主导' },
+  { value: '远景', label: '远景', icon: Maximize, desc: 'Long Shot - 人物小但能看清动作' },
+  { value: '全景', label: '全景', icon: Square, desc: 'Full Shot - 顶天立地，全身可见' },
+  { value: '中景', label: '中景', icon: Box, desc: 'Medium Shot - 腰部以上，社交距离' },
+  { value: '中近景', label: '中近景', icon: User, desc: 'Medium Close-up - 胸部以上，故事重心' },
+  { value: '近景', label: '近景', icon: Circle, desc: 'Close Shot - 脖子以上，亲密审视' },
+  { value: '特写', label: '特写', icon: ZoomIn, desc: 'Close-up - 只有脸，灵魂窗口' },
+  { value: '大特写', label: '大特写', icon: ZoomIn, desc: 'Extreme Close-up - 局部细节，显微镜' },
 ];
 
-// 拍摄角度
+// 拍摄角度 (Camera Angle) - 使用标准影视术语
 const CAMERA_ANGLES = [
-  { value: '平视', label: '平视', icon: Minus, desc: 'Eye Level' },
-  { value: '仰角', label: '仰角', icon: TrendingUp, desc: 'Low Angle' },
-  { value: '俯角', label: '俯角', icon: TrendingDown, desc: 'High Angle' },
-  { value: '顶视', label: '顶视', icon: ArrowDown, desc: 'Bird\'s Eye View' },
-  { value: '侧面', label: '侧面', icon: ArrowRight, desc: 'Side Angle' },
-  { value: '侧面仰角', label: '侧仰', icon: ArrowUpRight, desc: 'Side Low' },
-  { value: '侧面俯角', label: '侧俯', icon: ArrowDownRight, desc: 'Side High' },
-  { value: '倾斜', label: '倾斜', icon: RotateCw, desc: 'Dutch Angle' },
+  { value: '视平', label: '视平', icon: Minus, desc: 'Eye Level - 与角色眼睛同高，最中性自然' },
+  { value: '高位俯拍', label: '高位俯拍', icon: TrendingDown, desc: 'High Angle - 从上往下拍，表现脆弱无助' },
+  { value: '低位仰拍', label: '低位仰拍', icon: TrendingUp, desc: 'Low Angle - 从下往上拍，赋予力量' },
+  { value: '斜拍', label: '斜拍', icon: RotateCw, desc: 'Dutch Angle - 摄影机倾斜，制造不安' },
+  { value: '越肩', label: '越肩', icon: Users, desc: 'Over the Shoulder - 从肩膀后方拍摄' },
+  { value: '鸟瞰', label: '鸟瞰', icon: ArrowDown, desc: 'Bird\'s Eye View - 垂直向下90度，上帝视角' },
 ];
 
-// 运镜方式
+// 运镜方式 (Camera Movement) - 使用标准影视术语
 const CAMERA_MOVEMENTS = [
-  { value: '固定镜头', label: '固定', icon: Maximize2, desc: 'Static Shot' },
-  { value: '推镜', label: '推镜', icon: ZoomIn, desc: 'Push In' },
-  { value: '拉镜', label: '拉镜', icon: ZoomOut, desc: 'Pull Out' },
-  { value: '摇镜', label: '摇镜', icon: RotateCw, desc: 'Pan' },
-  { value: '升降', label: '升降', icon: ArrowUp, desc: 'Boom' },
-  { value: '跟拍', label: '跟拍', icon: Move, desc: 'Tracking' },
-  { value: '环绕', label: '环绕', icon: RefreshCw, desc: 'Arc Shot' },
-  { value: '手持', label: '手持', icon: MousePointerClick, desc: 'Handheld' },
+  { value: '固定', label: '固定', icon: Maximize2, desc: 'Static - 摄影机纹丝不动' },
+  { value: '横移', label: '横移', icon: MoveHorizontal, desc: 'Truck - 水平移动，产生视差' },
+  { value: '俯仰', label: '俯仰', icon: ArrowUpDown, desc: 'Tilt - 镜头上下转动' },
+  { value: '横摇', label: '横摇', icon: RotateCw, desc: 'Pan - 镜头左右转动' },
+  { value: '升降', label: '升降', icon: ArrowUp, desc: 'Boom/Crane - 垂直升降' },
+  { value: '轨道推拉', label: '轨道推拉', icon: ZoomIn, desc: 'Dolly - 物理靠近或远离' },
+  { value: '变焦推拉', label: '变焦推拉', icon: ZoomIn, desc: 'Zoom - 改变焦距，人工感' },
+  { value: '正跟随', label: '正跟随', icon: Move, desc: 'Following Shot - 位于角色身后跟随' },
+  { value: '倒跟随', label: '倒跟随', icon: Move, desc: 'Leading Shot - 在角色前方后退' },
+  { value: '环绕', label: '环绕', icon: RefreshCw, desc: 'Arc/Orbit - 围绕主体旋转' },
+  { value: '滑轨横移', label: '滑轨横移', icon: MoveHorizontal, desc: 'Slider - 小型轨道平滑移动' },
 ];
 const IMAGE_COUNTS = [1, 2, 3, 4];
 const VIDEO_COUNTS = [1, 2, 3, 4];
@@ -551,6 +553,8 @@ const NodeComponent: React.FC<NodeProps> = ({
       if (node.type === NodeType.STORYBOARD_IMAGE) return 600;
       if (node.type === NodeType.CHARACTER_NODE) return CHARACTER_NODE_HEIGHT;
       if (node.type === NodeType.DRAMA_ANALYZER) return 600;
+      if (node.type === NodeType.SORA_VIDEO_GENERATOR) return 700;
+      if (node.type === NodeType.SORA_VIDEO_CHILD) return 500;
       if (node.type === NodeType.SCRIPT_PLANNER && node.data.scriptOutline) return 500;
       if (['VIDEO_ANALYZER', 'IMAGE_EDITOR', 'PROMPT_INPUT', 'SCRIPT_PLANNER', 'SCRIPT_EPISODE'].includes(node.type)) return DEFAULT_FIXED_HEIGHT;
       if (node.type === NodeType.AUDIO_GENERATOR) return AUDIO_NODE_HEIGHT;
@@ -668,7 +672,7 @@ const NodeComponent: React.FC<NodeProps> = ({
 
                                       <div className="flex flex-wrap gap-1.5 mt-1">
                                           <span className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[8px] text-slate-500">
-                                              📹 {shot.shotType}
+                                              📹 {shot.shotSize}
                                           </span>
                                           <span className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[8px] text-slate-500">
                                               📐 {shot.cameraAngle}
@@ -765,15 +769,15 @@ const NodeComponent: React.FC<NodeProps> = ({
                                       </div>
 
                                       <div>
-                                          <label className="block text-xs text-slate-400 mb-2">镜头类型</label>
+                                          <label className="block text-xs text-slate-400 mb-2">景别</label>
                                           <div className="grid grid-cols-4 gap-2">
                                               {SHOT_TYPES.map((type) => {
                                                   const Icon = type.icon;
-                                                  const isSelected = editingShot.shotType === type.value || editingShot.shotType.includes(type.label);
+                                                  const isSelected = editingShot.shotSize === type.value || editingShot.shotSize.includes(type.label);
                                                   return (
                                                       <button
                                                           key={type.value}
-                                                          onClick={() => setEditingShot({ ...editingShot, shotType: type.value })}
+                                                          onClick={() => setEditingShot({ ...editingShot, shotSize: type.value })}
                                                           className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
                                                               isSelected
                                                                   ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
@@ -1448,10 +1452,10 @@ const NodeComponent: React.FC<NodeProps> = ({
                                                   )}
 
                                                   <div className="grid grid-cols-2 gap-2">
-                                                      {shot.shotType && (
+                                                      {shot.shotSize && (
                                                           <div>
-                                                              <span className="text-[10px] font-bold text-slate-500 uppercase">镜头类型</span>
-                                                              <p className="text-xs text-slate-300">{shot.shotType}</p>
+                                                              <span className="text-[10px] font-bold text-slate-500 uppercase">景别</span>
+                                                              <p className="text-xs text-slate-300">{shot.shotSize}</p>
                                                           </div>
                                                       )}
                                                       {shot.cameraAngle && (
@@ -1465,10 +1469,10 @@ const NodeComponent: React.FC<NodeProps> = ({
                                                   <div className="grid grid-cols-2 gap-2">
                                                       {shot.cameraMovement && (
                                                           <div>
-                                                              <span className="text-[10px] font-bold text-slate-500 uppercase">镜头运动</span>
+                                                              <span className="text-[10px] font-bold text-slate-500 uppercase">运镜方式</span>
                                                               <p className="text-xs text-slate-300">{shot.cameraMovement}</p>
                                                           </div>
-                                                  )}
+                                                      )}
                                                       {shot.duration && (
                                                           <div>
                                                               <span className="text-[10px] font-bold text-slate-500 uppercase">时长</span>
@@ -2083,6 +2087,228 @@ const NodeComponent: React.FC<NodeProps> = ({
           );
       }
 
+      // --- SORA VIDEO GENERATOR (PARENT NODE) CONTENT ---
+      if (node.type === NodeType.SORA_VIDEO_GENERATOR) {
+          const taskGroups = node.data.taskGroups || [];
+
+          return (
+              <div className="w-full h-full flex flex-col bg-zinc-900 overflow-hidden">
+                  {/* Task Groups List */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
+                      {taskGroups.length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600">
+                              <Wand2 size={32} className="opacity-50" />
+                              <span className="text-xs font-medium">等待生成分组</span>
+                              <span className="text-[10px] text-slate-500 text-center max-w-[280px]">
+                                  连接分镜图拆解节点后点击"开始生成"
+                              </span>
+                          </div>
+                      ) : (
+                          <div className="flex flex-col gap-3">
+                              {taskGroups.map((tg: any, index: number) => (
+                                  <div
+                                      key={tg.id}
+                                      className={`rounded-lg border overflow-hidden transition-all ${
+                                          tg.generationStatus === 'completed'
+                                              ? 'bg-green-500/10 border-green-500/30'
+                                              : tg.generationStatus === 'generating' || tg.generationStatus === 'uploading'
+                                              ? 'bg-blue-500/10 border-blue-500/30 animate-pulse'
+                                              : tg.generationStatus === 'failed'
+                                              ? 'bg-red-500/10 border-red-500/30'
+                                              : 'bg-white/5 border-white/10'
+                                      }`}
+                                  >
+                                      {/* Header */}
+                                      <div className="flex items-center justify-between px-3 py-2 bg-black/20 border-b border-white/5">
+                                          <div className="flex items-center gap-2">
+                                              <span className="text-xs font-bold text-white">
+                                                  任务组 {tg.taskNumber}
+                                              </span>
+                                              <span className="text-[9px] text-slate-400">
+                                                  {tg.totalDuration.toFixed(1)}秒 · {tg.shotIds.length}个镜头
+                                              </span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                              {tg.generationStatus === 'completed' && (
+                                                  <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-[9px] rounded-full font-medium">
+                                                      完成
+                                                  </span>
+                                              )}
+                                              {tg.generationStatus === 'generating' && (
+                                                  <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] rounded-full font-medium">
+                                                      生成中 {tg.progress || 0}%
+                                                  </span>
+                                              )}
+                                              {tg.generationStatus === 'failed' && (
+                                                  <span className="px-2 py-0.5 bg-red-500/20 text-red-300 text-[9px] rounded-full font-medium">
+                                                      失败
+                                                  </span>
+                                              )}
+                                          </div>
+                                      </div>
+
+                                      {/* Two Column Layout */}
+                                      <div className="flex gap-3 p-3">
+                                          {/* Left: Storyboard Info */}
+                                          <div className="flex-1 space-y-2">
+                                              <div className="text-[10px] font-bold text-slate-400">分镜信息</div>
+
+                                              {/* Shots Grid */}
+                                              {tg.splitShots && tg.splitShots.length > 0 && (
+                                                  <div className="grid grid-cols-3 gap-1.5">
+                                                      {tg.splitShots.slice(0, 6).map((shot: any) => (
+                                                          <div key={shot.id} className="relative group/shot">
+                                                              <img
+                                                                  src={shot.splitImage}
+                                                                  alt={`Shot ${shot.shotNumber}`}
+                                                                  className="w-full aspect-video object-cover rounded border border-white/10 cursor-pointer hover:border-cyan-500/50 transition-all"
+                                                                  onClick={(e) => {
+                                                                      e.stopPropagation();
+                                                                      // 可以添加点击查看大图的功能
+                                                                  }}
+                                                              />
+                                                              <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-gradient-to-t from-black/80 to-transparent">
+                                                                  <span className="text-[8px] text-white/90">#{shot.shotNumber}</span>
+                                                              </div>
+                                                          </div>
+                                                      ))}
+                                                      {tg.splitShots.length > 6 && (
+                                                          <div className="flex items-center justify-center aspect-video bg-black/30 rounded border border-white/10 text-[8px] text-slate-500">
+                                                              +{tg.splitShots.length - 6}
+                                                          </div>
+                                                      )}
+                                                  </div>
+                                              )}
+
+                                              {/* Overall Description */}
+                                              {tg.splitShots && tg.splitShots.length > 0 && (
+                                                  <div className="space-y-1">
+                                                      <div className="text-[8px] text-slate-500">分镜概述</div>
+                                                      <div className="text-[9px] text-slate-300 line-clamp-3">
+                                                          {tg.splitShots.map((s: any) => s.visualDescription).join('；')}
+                                                      </div>
+                                                  </div>
+                                              )}
+                                          </div>
+
+                                          {/* Right: AI Optimized Sora Prompt */}
+                                          <div className="flex-1 space-y-2">
+                                              <div className="flex items-center justify-between">
+                                                  <div className="text-[10px] font-bold text-slate-400">AI 优化提示词</div>
+                                                  <button
+                                                      onClick={() => onAction?.(node.id, `regenerate-prompt:${index}`)}
+                                                      className="p-1 hover:bg-white/10 rounded transition-colors"
+                                                      title="重新生成提示词"
+                                                  >
+                                                      <RefreshCw size={10} className="text-slate-400 hover:text-white" />
+                                                  </button>
+                                              </div>
+
+                                              {tg.soraPrompt ? (
+                                                  <div className="p-2 bg-black/30 rounded border border-white/5 max-h-40 overflow-y-auto custom-scrollbar">
+                                                      <pre className="text-[9px] text-slate-300 font-mono whitespace-pre-wrap break-words">
+                                                          {tg.soraPrompt}
+                                                      </pre>
+                                                  </div>
+                                              ) : (
+                                                  <div className="p-2 bg-black/20 rounded border border-dashed border-white/10 text-center">
+                                                      <span className="text-[9px] text-slate-500">等待生成提示词</span>
+                                                  </div>
+                                              )}
+
+                                              {/* Camera Tags */}
+                                              {tg.splitShots && tg.splitShots.length > 0 && (
+                                                  <div className="flex flex-wrap gap-1">
+                                                      {Array.from(new Set(tg.splitShots.map((s: any) => s.shotSize))).slice(0, 3).map((shotSize: string, i: number) => (
+                                                          <span key={i} className="px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[8px] rounded">
+                                                              {shotSize}
+                                                          </span>
+                                                      ))}
+                                                  </div>
+                                              )}
+                                          </div>
+                                      </div>
+
+                                      {/* Error Message */}
+                                      {tg.error && (
+                                          <div className="px-3 pb-2 text-[9px] text-red-400">
+                                              ⚠️ {tg.error}
+                                          </div>
+                                      )}
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+              </div>
+          );
+      }
+
+      // --- SORA VIDEO CHILD NODE CONTENT ---
+      if (node.type === NodeType.SORA_VIDEO_CHILD) {
+          const videoUrl = node.data.videoUrl;
+          const duration = node.data.duration;
+          const isCompliant = node.data.isCompliant;
+          const violationReason = node.data.violationReason;
+          const locallySaved = node.data.locallySaved;
+
+          return (
+              <div className="w-full h-full flex flex-col bg-zinc-900 overflow-hidden">
+                  {/* Video Player or Placeholder */}
+                  <div className="flex-1 relative">
+                      {videoUrl ? (
+                          <SecureVideo
+                              videoRef={mediaRef}
+                              src={videoUrl}
+                              className="w-full h-full object-cover bg-zinc-900"
+                              loop
+                              muted
+                              autoPlay
+                          />
+                      ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
+                              <Video size={32} className="opacity-50" />
+                              <span className="text-xs font-medium">等待视频生成</span>
+                          </div>
+                      )}
+
+                      {/* Overlay Info */}
+                      {videoUrl && (
+                          <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
+                              <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                      {duration && (
+                                          <span className="text-[10px] text-white/80">
+                                              ⏱️ {duration}
+                                          </span>
+                                      )}
+                                      {isCompliant === false && (
+                                          <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-[9px] rounded-full font-medium" title={violationReason}>
+                                              ⚠️ 内容违规
+                                          </span>
+                                      )}
+                                      {locallySaved && (
+                                          <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-[9px] rounded-full font-medium">
+                                              ✓ 已保存
+                                          </span>
+                                      )}
+                                  </div>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* Error overlay */}
+                      {node.status === NodeStatus.ERROR && (
+                          <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+                              <AlertCircle className="text-red-500 mb-2" />
+                              <span className="text-xs text-red-200">{node.data.error}</span>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          );
+      }
+
       const hasContent = node.data.image || node.data.videoUri;
       return (
         <div className="w-full h-full relative group/media overflow-hidden bg-zinc-900" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
@@ -2270,6 +2496,198 @@ const NodeComponent: React.FC<NodeProps> = ({
                              </>
                          )}
                      </button>
+                 </div>
+             </div>
+         );
+     }
+
+     // Special handling for SORA_VIDEO_GENERATOR
+     if (node.type === NodeType.SORA_VIDEO_GENERATOR) {
+         const taskGroups = node.data.taskGroups || [];
+         const soraModelId = node.data.soraModelId || 'sora-2-10s-large';
+         const selectedModel: SoraModel | undefined = getSoraModelById(soraModelId);
+
+         return (
+             <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+                     {/* Model Selection */}
+                     <div className="flex flex-col gap-2">
+                         <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                             <Wand2 size={12} className="text-green-400" />
+                             <span>Sora 2 模型</span>
+                         </div>
+                         <select
+                             className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-green-500/50"
+                             value={soraModelId}
+                             onChange={(e) => onUpdate(node.id, { soraModelId: e.target.value })}
+                             onMouseDown={e => e.stopPropagation()}
+                         >
+                             <option value="sora-2-15s-yijia">sora-2-yijia (15秒竖屏)</option>
+                             <option value="sora-2-pro-10s-large-yijia">sora-2-pro (10秒高清竖屏)</option>
+                             <option value="sora-2-pro-10s-large">sora-2-pro (10秒高清横屏)</option>
+                             <option value="sora-2-15s">sora-2 (15秒横屏)</option>
+                             <option value="sora-2-pro-15s-yijia">sora-2-pro (15秒竖屏)</option>
+                             <option value="sora-2-10s-large-yijia">sora-2 (10秒高清竖屏)</option>
+                             <option value="sora-2-pro-10s-yijia">sora-2-pro (10秒竖屏)</option>
+                             <option value="sora-2-pro-15s">sora-2-pro (15秒横屏)</option>
+                             <option value="sora-2-10s-large">sora-2 (10秒高清横屏)</option>
+                             <option value="sora-2-pro-10s">sora-2-pro (10秒横屏)</option>
+                         </select>
+
+                         {/* Model Details */}
+                         {selectedModel && (
+                             <div className="bg-black/30 rounded-lg p-2 space-y-1.5 border border-white/5">
+                                 <div className="grid grid-cols-2 gap-2">
+                                     <div>
+                                         <span className="text-[9px] font-bold text-slate-500 uppercase">时长</span>
+                                         <p className="text-xs text-slate-300">{selectedModel.duration}秒</p>
+                                     </div>
+                                     <div>
+                                         <span className="text-[9px] font-bold text-slate-500 uppercase">分辨率</span>
+                                         <p className="text-xs text-slate-300">{selectedModel.resolution}</p>
+                                     </div>
+                                     <div>
+                                         <span className="text-[9px] font-bold text-slate-500 uppercase">比例</span>
+                                         <p className="text-xs text-slate-300">{selectedModel.aspectRatio}</p>
+                                     </div>
+                                     <div>
+                                         <span className="text-[9px] font-bold text-green-400 uppercase">价格</span>
+                                         <p className="text-xs text-green-300 font-bold">¥{selectedModel.price.toFixed(3)}</p>
+                                     </div>
+                                 </div>
+                                 <div>
+                                     <span className="text-[9px] font-bold text-slate-500 uppercase">描述</span>
+                                     <p className="text-xs text-slate-300">{selectedModel.description}</p>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                     <span className="text-[9px] font-bold text-slate-500 uppercase">标签</span>
+                                     {selectedModel.tags.map((tag, i) => (
+                                         <span key={i} className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] rounded">{tag}</span>
+                                     ))}
+                                     <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[9px] rounded">{selectedModel.endpointType}</span>
+                                 </div>
+                             </div>
+                         )}
+                     </div>
+
+                     {/* Action Buttons */}
+                     {taskGroups.length === 0 ? (
+                         // Stage 1: Generate task groups
+                         <button
+                             onClick={handleActionClick}
+                             disabled={isWorking}
+                             className={`w-full px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                 isWorking
+                                     ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                     : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:shadow-lg hover:shadow-green-500/20'
+                             }`}
+                         >
+                             {isWorking ? (
+                                 <>
+                                     <Loader2 className="animate-spin" size={14} />
+                                     <span>生成中...</span>
+                                 </>
+                             ) : (
+                                 <>
+                                     <Wand2 size={14} />
+                                     <span>开始生成</span>
+                                 </>
+                             )}
+                         </button>
+                     ) : (
+                         // Stage 2 & 3: Generate videos or regenerate
+                         <>
+                             <div className="flex gap-2">
+                                 <button
+                                     onClick={() => onAction?.(node.id, 'fuse-images')}
+                                     disabled={isWorking || taskGroups.every((tg: any) => tg.imageFused)}
+                                     className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                                         isWorking || taskGroups.every((tg: any) => tg.imageFused)
+                                             ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                             : 'bg-gradient-to-r from-purple-500 to-violet-500 text-white hover:shadow-lg hover:shadow-purple-500/20'
+                                     }`}
+                                 >
+                                     🖼️ 图片融合
+                                 </button>
+                                 <button
+                                     onClick={() => onAction?.(node.id, 'generate-videos')}
+                                     disabled={isWorking || taskGroups.every((tg: any) => tg.generationStatus === 'completed')}
+                                     className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                                         isWorking || taskGroups.every((tg: any) => tg.generationStatus === 'completed')
+                                             ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                             : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:shadow-lg hover:shadow-green-500/20'
+                                     }`}
+                                 >
+                                     {isWorking ? (
+                                         <Loader2 className="animate-spin" size={12} />
+                                     ) : (
+                                         '🎬 生成视频'
+                                     )}
+                                 </button>
+                             </div>
+
+                             {/* Progress Info */}
+                             {taskGroups.some((tg: any) => tg.generationStatus === 'generating' || tg.generationStatus === 'uploading') && (
+                                 <div className="text-[9px] text-slate-400 text-center">
+                                     正在生成 {taskGroups.filter((tg: any) => tg.generationStatus === 'generating' || tg.generationStatus === 'uploading').length} 个视频...
+                                 </div>
+                             )}
+                         </>
+                     )}
+                 </div>
+             </div>
+         );
+     }
+
+     // Special handling for SORA_VIDEO_CHILD
+     if (node.type === NodeType.SORA_VIDEO_CHILD) {
+         const locallySaved = node.data.locallySaved;
+         const videoUrl = node.data.videoUrl;
+
+         return (
+             <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+                     {/* Save Locally Button */}
+                     {videoUrl && !locallySaved && (
+                         <button
+                             onClick={() => onAction?.(node.id, 'save-locally')}
+                             disabled={isWorking}
+                             className={`w-full px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                 isWorking
+                                     ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                     : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:shadow-lg hover:shadow-green-500/20'
+                             }`}
+                         >
+                             {isWorking ? (
+                                 <>
+                                     <Loader2 className="animate-spin" size={14} />
+                                     <span>保存中...</span>
+                                 </>
+                             ) : (
+                                 <>
+                                     <Download size={14} />
+                                     <span>保存到本地</span>
+                                 </>
+                             )}
+                         </button>
+                     )}
+
+                     {/* Sora Prompt Display */}
+                     {node.data.soraPrompt && (
+                         <div className="flex flex-col gap-2">
+                             <label className="text-[10px] text-slate-400">Sora 提示词:</label>
+                             <div className="p-2 bg-black/30 rounded-lg text-[9px] text-slate-300 font-mono whitespace-pre-wrap break-all max-h-24 overflow-y-auto custom-scrollbar">
+                                 {node.data.soraPrompt}
+                             </div>
+                         </div>
+                     )}
+
+                     {/* Info */}
+                     {locallySaved && (
+                         <div className="text-[9px] text-green-400 text-center">
+                             ✓ 已保存到: {node.data.videoFilePath || '本地'}
+                         </div>
+                     )}
                  </div>
              </div>
          );

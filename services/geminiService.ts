@@ -471,9 +471,9 @@ const DETAILED_STORYBOARD_INSTRUCTION = `
     "duration": 2,
     "scene": "教室 - 白天 - 靠窗最后一排",
     "characters": ["林霄"],
-    "shotType": "特写 (Close-up)",
-    "cameraAngle": "侧面45度仰角",
-    "cameraMovement": "固定镜头 (Static Shot)",
+    "shotSize": "特写",
+    "cameraAngle": "低位仰拍",
+    "cameraMovement": "固定",
     "visualDescription": "阳光从窗外洒在林霄的侧脸上，他目光空洞地望向窗外，教室里其他同学的声音模糊成背景音",
     "dialogue": "无",
     "visualEffects": "浅景深，背景虚化；暖色调光线；ANIME风格，强调眼神细节",
@@ -542,9 +542,9 @@ const DETAILED_STORYBOARD_INSTRUCTION = `
 **内容要求：**
 
 1. **专业术语**：
-   - 镜头类型：特写(CU)、中景(MS)、全景(WS)、主观镜头(POV)、过肩(OTS)等
-   - 拍摄角度：平视、仰角、俯角、第一人称、侧面、顶视、荷兰角等
-   - 运镜方式：固定镜头、推镜、拉镜、摇镜、跟拍、环绕、快速甩镜、手持等
+   - 景别：大远景、远景、全景、中景、中近景、近景、特写、大特写
+   - 拍摄角度：视平、高位俯拍、低位仰拍、斜拍、越肩、鸟瞰
+   - 运镜方式：固定、横移、俯仰、横摇、升降、轨道推拉、变焦推拉、正跟随、倒跟随、环绕、滑轨横移
 
 2. **画面描述详细**：
    - 必须包含具体的人物动作、表情、环境细节
@@ -1014,6 +1014,7 @@ export const generateScriptPlanner = async (
     prompt: string,
     config: { theme?: string, genre?: string, setting?: string, episodes?: number, duration?: number, visualStyle?: string },
     refinedInfo?: Record<string, string[]>,
+    model?: string,
     context?: { nodeId?: string; nodeType?: string }
 ): Promise<string> => {
     return logAPICall(
@@ -1061,7 +1062,7 @@ export const generateScriptPlanner = async (
     `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: model || 'gemini-2.5-flash',
                 config: { systemInstruction: SCRIPT_PLANNER_INSTRUCTION },
                 contents: { parts: [{ text: fullPrompt }] }
             });
@@ -1069,7 +1070,7 @@ export const generateScriptPlanner = async (
             return response.text || "";
         },
         {
-            model: 'gemini-2.5-flash',
+            model: model || 'gemini-2.5-flash',
             prompt: prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''),
             config,
             hasRefinedInfo: !!refinedInfo && Object.keys(refinedInfo).length > 0
@@ -1085,6 +1086,7 @@ export const generateScriptEpisodes = async (
     duration: number,
     style?: string,
     modificationSuggestion?: string,
+    model?: string,
     context?: { nodeId?: string; nodeType?: string }
 ): Promise<{ title: string, content: string, characters: string }[]> => {
     return logAPICall(
@@ -1101,7 +1103,7 @@ export const generateScriptEpisodes = async (
     `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: model || 'gemini-2.5-flash',
                 config: {
                     systemInstruction: SCRIPT_EPISODE_INSTRUCTION,
                     responseMimeType: 'application/json'
@@ -1118,7 +1120,7 @@ export const generateScriptEpisodes = async (
             }
         },
         {
-            model: 'gemini-2.5-flash',
+            model: model || 'gemini-2.5-flash',
             chapter,
             splitCount,
             duration,
@@ -1199,7 +1201,7 @@ export const generateDetailedStoryboard = async (
                         duration,
                         scene: rawShot.scene || '',
                         characters: Array.isArray(rawShot.characters) ? rawShot.characters : [],
-                        shotType: rawShot.shotType || '',
+                        shotSize: rawShot.shotSize || '',
                         cameraAngle: rawShot.cameraAngle || '',
                         cameraMovement: rawShot.cameraMovement || '',
                         visualDescription: rawShot.visualDescription || '',

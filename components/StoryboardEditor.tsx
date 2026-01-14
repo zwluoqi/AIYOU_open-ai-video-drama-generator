@@ -181,15 +181,15 @@ export const StoryboardEditor: React.FC<StoryboardEditorProps> = ({
 
                         {/* Camera Info */}
                         <div>
-                            <label className="block text-xs font-bold text-slate-400 mb-2">🎬 镜头类型</label>
+                            <label className="block text-xs font-bold text-slate-400 mb-2">🎬 景别</label>
                             <div className="grid grid-cols-4 gap-2">
                                 {SHOT_TYPES.map(type => {
                                     const Icon = type.icon;
-                                    const isSelected = editedShot.shotType === type.value;
+                                    const isSelected = editedShot.shotSize === type.value;
                                     return (
                                         <button
                                             key={type.value}
-                                            onClick={() => updateField('shotType', type.value)}
+                                            onClick={() => updateField('shotSize', type.value)}
                                             className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
                                                 isSelected
                                                     ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'

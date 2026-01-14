@@ -14,7 +14,8 @@ import {
   Film,
   Sparkles,
   Palette,
-  Grid
+  Grid,
+  Wand2
 } from 'lucide-react';
 
 /**
@@ -37,6 +38,7 @@ export function getNodeIcon(type: NodeType) {
     [NodeType.STORYBOARD_GENERATOR]: Clapperboard,
     [NodeType.STORYBOARD_IMAGE]: Clapperboard,
     [NodeType.STORYBOARD_SPLITTER]: Grid,
+    [NodeType.SORA_VIDEO_GENERATOR]: Wand2,
     [NodeType.CHARACTER_NODE]: User,
     [NodeType.DRAMA_ANALYZER]: Film,
     [NodeType.DRAMA_REFINED]: Sparkles,
@@ -62,6 +64,7 @@ export function getNodeColor(type: NodeType): string {
     [NodeType.STORYBOARD_GENERATOR]: '#a855f7',
     [NodeType.STORYBOARD_IMAGE]: '#a855f7',
     [NodeType.STORYBOARD_SPLITTER]: '#3b82f6',  // Blue color for analysis/processing
+    [NodeType.SORA_VIDEO_GENERATOR]: '#10b981',  // Green color for Sora video generation
     [NodeType.CHARACTER_NODE]: '#f97316',
     [NodeType.DRAMA_ANALYZER]: '#7c3aed',
     [NodeType.DRAMA_REFINED]: '#06b6d4',
@@ -90,6 +93,8 @@ export function getApproxNodeHeight(node: AppNode): number {
     [NodeType.STORYBOARD_GENERATOR]: 500,
     [NodeType.STORYBOARD_IMAGE]: 600,
     [NodeType.STORYBOARD_SPLITTER]: 700,  // Taller for list display
+    [NodeType.SORA_VIDEO_GENERATOR]: 700,  // Taller for task groups list
+    [NodeType.SORA_VIDEO_CHILD]: 500,  // Medium height for video display
     [NodeType.CHARACTER_NODE]: 520,
     [NodeType.DRAMA_ANALYZER]: 600,
     [NodeType.DRAMA_REFINED]: 400,
@@ -117,6 +122,10 @@ export function getApproxNodeHeight(node: AppNode): number {
 
   if (node.data.splitShots && node.data.splitShots.length > 0) {
     height += node.data.splitShots.length * 30; // 每个拆解的分镜增加高度
+  }
+
+  if (node.data.taskGroups && node.data.taskGroups.length > 0) {
+    height += node.data.taskGroups.length * 80; // 每个任务组增加高度
   }
 
   return height;

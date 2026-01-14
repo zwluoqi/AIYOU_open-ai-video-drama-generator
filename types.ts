@@ -15,6 +15,8 @@ export enum NodeType {
   DRAMA_ANALYZER = 'DRAMA_ANALYZER',
   DRAMA_REFINED = 'DRAMA_REFINED',
   STYLE_PRESET = 'STYLE_PRESET',
+  SORA_VIDEO_GENERATOR = 'SORA_VIDEO_GENERATOR',
+  SORA_VIDEO_CHILD = 'SORA_VIDEO_CHILD',
 }
 
 export enum NodeStatus {
@@ -50,10 +52,10 @@ export interface DetailedStoryboardShot {
     scene: string;
     characters: string[];
 
-    // Camera info
-    shotType: string;
-    cameraAngle: string;
-    cameraMovement: string;
+    // Camera info - 使用标准影视术语
+    shotSize: string; // 景别：大远景/远景/全景/中景/中近景/近景/特写/大特写
+    cameraAngle: string; // 拍摄角度：视平/高位俯拍/低位仰拍/斜拍/越肩/鸟瞰
+    cameraMovement: string; // 运镜方式：固定/横移/俯仰/横摇/升降/轨道推拉/变焦推拉/正跟随/倒跟随/环绕/滑轨横移
 
     // Content
     visualDescription: string;
@@ -85,12 +87,12 @@ export interface SplitStoryboardShot {
     panelIndex: number; // Which panel in the grid (0-8 for 9-grid, 0-5 for 6-grid)
     splitImage: string; // Base64 of the split individual panel image
 
-    // From DetailedStoryboardShot
+    // From DetailedStoryboardShot - 使用标准影视术语
     scene: string;
     characters: string[];
-    shotType: string;
-    cameraAngle: string;
-    cameraMovement: string;
+    shotSize: string; // 景别：大远景/远景/全景/中景/中近景/近景/特写/大特写
+    cameraAngle: string; // 拍摄角度：视平/高位俯拍/低位仰拍/斜拍/越肩/鸟瞰
+    cameraMovement: string; // 运镜方式：固定/横移/俯仰/横摇/升降/轨道推拉/变焦推拉/正跟随/倒跟随/环绕/滑轨横移
     visualDescription: string;
     dialogue: string;
     visualEffects: string;
@@ -261,6 +263,63 @@ export interface SmartSequenceItem {
         duration: number; // 1-6s
         prompt: string;
     };
+}
+
+// Sora 2 Video Generator Types
+export interface SoraModel {
+  id: string;
+  name: string;
+  duration: number; // 秒
+  aspectRatio: '16:9' | '9:16';
+  resolution: string;
+  description: string;
+  price: number; // 价格（元）
+  endpointType: 'openai-video' | 'openai'; // 端点类型
+  provider: string; // 供应商
+  billingType: string; // 计费类型
+  tags: string[]; // 标签
+}
+
+export interface SoraTaskGroup {
+  id: string;
+  taskNumber: number;
+  totalDuration: number; // 总时长（秒）
+  shotIds: string[]; // 包含的分镜ID
+  splitShots: SplitStoryboardShot[]; // 分镜数据
+
+  // Sora 提示词
+  soraPrompt: string;
+  promptGenerated: boolean;
+  promptModified?: boolean; // 用户是否修改过提示词
+
+  // 参考图
+  referenceImage?: string; // 拼接后的参考图URL或Base64
+  imageFused: boolean;
+
+  // 视频生成状态
+  generationStatus: 'idle' | 'prompt_ready' | 'image_fused' | 'uploading' | 'generating' | 'completed' | 'failed';
+  soraTaskId?: string;
+  progress?: number; // 0-100
+  videoFilePath?: string; // 本地视频文件路径
+  videoMetadata?: {
+    duration: number;
+    resolution: string;
+    fileSize: number;
+    createdAt: Date;
+  };
+  error?: string;
+}
+
+export interface SoraStorageConfig {
+  apiKey?: string;
+}
+
+export interface OSSConfig {
+  provider: 'tencent' | 'aliyun';
+  bucket: string;
+  region: string;
+  accessKey: string;
+  secretKey: string;
 }
 
 // Window interface for Google AI Studio key selection

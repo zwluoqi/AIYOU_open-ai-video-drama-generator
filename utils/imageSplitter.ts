@@ -79,7 +79,7 @@ export async function splitStoryboardImage(
         // From DetailedStoryboardShot
         scene: shotData.scene || '',
         characters: shotData.characters || [],
-        shotType: shotData.shotType || '',
+        shotSize: shotData.shotSize || '',
         cameraAngle: shotData.cameraAngle || '',
         cameraMovement: shotData.cameraMovement || '',
         visualDescription: shotData.visualDescription || shotData.description || '',

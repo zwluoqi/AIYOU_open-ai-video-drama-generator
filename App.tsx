@@ -14,8 +14,11 @@ import { CharacterDetailModal } from './components/CharacterDetailModal';
 import { SettingsPanel } from './components/SettingsPanel';
 import { DebugPanel } from './components/DebugPanel';
 import { ModelFallbackNotification } from './components/ModelFallbackNotification';
-import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, SmartSequenceItem, CharacterProfile } from './types';
+import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, SmartSequenceItem, CharacterProfile, SoraTaskGroup } from './types';
 import { generateImageFromText, generateVideo, analyzeVideo, editImageWithText, planStoryboard, orchestrateVideoPrompt, compileMultiFramePrompt, urlToBase64, extractLastFrame, generateAudio, generateScriptPlanner, generateScriptEpisodes, generateCinematicStoryboard, extractCharactersFromText, generateCharacterProfile, detectTextInImage, analyzeDrama } from './services/geminiService';
+import { generateSoraVideo, generateMultipleSoraVideos } from './services/soraService';
+import { saveVideoFile, saveReferenceImage, saveVideoMetadata, saveUsageLog } from './services/fileSystemService';
+import { getSoraModelById } from './services/soraConfigService';
 import { generateImageWithFallback } from './services/geminiServiceWithFallback';
 import { getGenerationStrategy } from './services/videoStrategies';
 import { saveToStorage, loadFromStorage } from './services/storage';
@@ -359,6 +362,8 @@ export const App = () => {
           case NodeType.STORYBOARD_GENERATOR: return t.nodes.storyboardGenerator;
           case NodeType.STORYBOARD_IMAGE: return '分镜图设计';
           case NodeType.STORYBOARD_SPLITTER: return '分镜图拆解';
+          case NodeType.SORA_VIDEO_GENERATOR: return 'Sora 2 视频';
+          case NodeType.SORA_VIDEO_CHILD: return 'Sora 2 视频结果';
           case NodeType.CHARACTER_NODE: return t.nodes.characterNode;
           case NodeType.DRAMA_ANALYZER: return '剧目分析';
           case NodeType.DRAMA_REFINED: return '剧目精炼';
@@ -1796,6 +1801,205 @@ export const App = () => {
               return; // Exit early after extraction
           }
 
+          // Handle SORA_VIDEO_GENERATOR actions
+          if (node.type === NodeType.SORA_VIDEO_GENERATOR) {
+              const taskGroups = node.data.taskGroups || [];
+
+              // Action: Regenerate prompt for a specific task group
+              if (promptOverride?.startsWith('regenerate-prompt:')) {
+                  const taskGroupIndex = parseInt(promptOverride.split(':')[1]);
+                  const taskGroup = taskGroups[taskGroupIndex];
+
+                  if (!taskGroup) {
+                      throw new Error(`未找到任务组 ${taskGroupIndex + 1}`);
+                  }
+
+                  console.log('[SORA_VIDEO_GENERATOR] Regenerating AI-enhanced prompt for task group:', taskGroup.taskNumber);
+
+                  // Set node to WORKING status
+                  setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.WORKING, data: { ...n.data, progress: '正在优化提示词...' } } : n));
+
+                  try {
+                    // Use AI to generate enhanced prompt
+                    const { buildEnhancedSoraPrompt } = await import('./services/soraService');
+                    const newPrompt = await buildEnhancedSoraPrompt(taskGroup.splitShots);
+
+                    // Update the task group's prompt
+                    const updatedTaskGroups = [...taskGroups];
+                    updatedTaskGroups[taskGroupIndex] = {
+                        ...taskGroup,
+                        soraPrompt: newPrompt,
+                        promptModified: true
+                    };
+
+                    handleNodeUpdate(id, { taskGroups: updatedTaskGroups });
+                    setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
+                  } catch (error: any) {
+                    console.error('[SORA_VIDEO_GENERATOR] Failed to regenerate prompt:', error);
+                    setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.ERROR, data: { ...n.data, error: error.message } } : n));
+                  }
+                  return;
+              }
+
+              // Action: Fuse reference images for task groups
+              if (promptOverride === 'fuse-images') {
+                  console.log('[SORA_VIDEO_GENERATOR] Fusing reference images for task groups');
+
+                  if (taskGroups.length === 0) {
+                      throw new Error('请先生成任务组和提示词');
+                  }
+
+                  // TODO: Implement image fusion logic
+                  // For now, just mark as fused
+                  const updatedTaskGroups = taskGroups.map(tg => ({
+                      ...tg,
+                      imageFused: true,
+                      generationStatus: 'image_fused' as const
+                  }));
+
+                  handleNodeUpdate(id, { taskGroups: updatedTaskGroups });
+                  setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
+                  return;
+              }
+
+              // Action: Generate Sora videos for all task groups
+              if (promptOverride === 'generate-videos') {
+                  console.log('[SORA_VIDEO_GENERATOR] Generating Sora videos for task groups');
+
+                  const taskGroupsToGenerate = taskGroups.filter(tg =>
+                      tg.generationStatus === 'prompt_ready' || tg.generationStatus === 'image_fused'
+                  );
+
+                  if (taskGroupsToGenerate.length === 0) {
+                      throw new Error('没有可生成的任务组，请先完成提示词生成');
+                  }
+
+                  // Update all task groups to 'uploading' status
+                  const uploadingGroups = taskGroups.map(tg =>
+                      taskGroupsToGenerate.find(t => t.id === tg.id)
+                          ? { ...tg, generationStatus: 'uploading' as const }
+                          : tg
+                  );
+                  handleNodeUpdate(id, { taskGroups: uploadingGroups });
+
+                  // Generate videos for each task group
+                  const results = await generateMultipleSoraVideos(
+                      taskGroupsToGenerate,
+                      (index, message, progress) => {
+                          console.log(`[SORA_VIDEO_GENERATOR] Task ${index + 1}/${taskGroupsToGenerate.length}: ${message} (${progress}%)`);
+                      }
+                  );
+
+                  // Create child nodes for completed videos
+                  const newChildNodes: AppNode[] = [];
+                  const newConnections: Connection[] = [];
+
+                  results.forEach((result, index) => {
+                      const taskGroup = taskGroupsToGenerate[index];
+                      if (result.status === 'completed' && result.videoUrl) {
+                          // Create child node
+                          const childNodeId = `n-sora-child-${Date.now()}-${index}`;
+                          const childNode: AppNode = {
+                              id: childNodeId,
+                              type: NodeType.SORA_VIDEO_CHILD,
+                              x: node.x + (node.width || 420) + 50,
+                              y: node.y + (index * 150),
+                              title: `任务组 ${taskGroup.taskNumber}`,
+                              status: NodeStatus.SUCCESS,
+                              data: {
+                                  taskGroupId: taskGroup.id,
+                                  taskNumber: taskGroup.taskNumber,
+                                  soraPrompt: taskGroup.soraPrompt,
+                                  videoUrl: result.videoUrl,
+                                  videoUrlWatermarked: result.videoUrlWatermarked,
+                                  duration: result.duration,
+                                  quality: result.quality,
+                                  isCompliant: result.isCompliant,
+                                  violationReason: result.violationReason
+                              },
+                              inputs: [node.id]
+                          };
+                          newChildNodes.push(childNode);
+                          newConnections.push({ from: node.id, to: childNodeId });
+                      }
+                  });
+
+                  // Update task groups with results
+                  const finalTaskGroups = taskGroups.map(tg => {
+                      const result = results.get(tg.id);
+                      if (result) {
+                          return {
+                              ...tg,
+                              generationStatus: result.status === 'completed' ? 'completed' as const : 'failed' as const,
+                              progress: result.status === 'completed' ? 100 : 0,
+                              error: result.status === 'error' ? '生成失败' : undefined,
+                              videoMetadata: result.status === 'completed' ? {
+                                  duration: parseFloat(result.duration || '0'),
+                                  resolution: '1080p',
+                                  fileSize: 0,
+                                  createdAt: new Date()
+                              } : undefined
+                          };
+                      }
+                      return tg;
+                  });
+
+                  // Add child nodes to canvas
+                  if (newChildNodes.length > 0) {
+                      try { saveHistory(); } catch (e) { }
+                      setNodes(prev => [...prev, ...newChildNodes]);
+                      setConnections(prev => [...prev, ...newConnections]);
+                  }
+
+                  handleNodeUpdate(id, { taskGroups: finalTaskGroups });
+                  setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
+                  return;
+              }
+          }
+
+          // Handle SORA_VIDEO_CHILD node actions (save video locally)
+          if (node.type === NodeType.SORA_VIDEO_CHILD && promptOverride === 'save-locally') {
+              const videoUrl = node.data.videoUrl;
+              if (!videoUrl) {
+                  throw new Error('未找到视频URL');
+              }
+
+              console.log('[SORA_VIDEO_CHILD] Saving video locally');
+
+              // Get parent node to retrieve task group info
+              const parentNode = nodesRef.current.find(n => n.id === node.inputs[0]);
+              if (!parentNode || parentNode.type !== NodeType.SORA_VIDEO_GENERATOR) {
+                  throw new Error('未找到父节点');
+              }
+
+              const taskGroups = parentNode.data.taskGroups || [];
+              const taskGroup = taskGroups.find((tg: any) => tg.id === node.data.taskGroupId);
+              if (!taskGroup) {
+                  throw new Error('未找到任务组信息');
+              }
+
+              // Save video file
+              const filePath = await saveVideoFile(videoUrl, taskGroup, false);
+
+              // Save metadata
+              const result: any = {
+                  taskId: node.data.taskGroupId,
+                  status: 'completed',
+                  videoUrl: videoUrl,
+                  duration: node.data.duration,
+                  quality: node.data.quality,
+                  isCompliant: node.data.isCompliant
+              };
+              await saveVideoMetadata(taskGroup, result);
+
+              handleNodeUpdate(id, {
+                  videoFilePath: filePath,
+                  locallySaved: true
+              });
+              setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
+              return;
+          }
+
           const inputs = node.inputs.map(i => nodesRef.current.find(n => n.id === i)).filter(Boolean) as AppNode[];
 
           const upstreamTexts = inputs.map(n => {
@@ -2207,7 +2411,7 @@ export const App = () => {
                   episodes: node.data.scriptEpisodes,
                   duration: node.data.scriptDuration,
                   visualStyle: node.data.scriptVisualStyle // Pass Visual Style
-              }, refinedInfo); // 传入精炼信息作为参考
+              }, refinedInfo, node.data.model || 'gemini-2.5-flash'); // 传入精炼信息作为参考和模型
               handleNodeUpdate(id, { scriptOutline: outline });
 
           } else if (node.type === NodeType.SCRIPT_EPISODE) {
@@ -2229,7 +2433,8 @@ export const App = () => {
                   node.data.episodeSplitCount || 3,
                   planner.data.scriptDuration || 1,
                   currentStyle, // Pass Visual Style
-                  node.data.episodeModificationSuggestion // Pass Modification Suggestion
+                  node.data.episodeModificationSuggestion, // Pass Modification Suggestion
+                  node.data.model || 'gemini-2.5-flash' // Pass Model
               );
 
               // ... (Episode Expansion Logic UNCHANGED) ...
@@ -2475,7 +2680,7 @@ export const App = () => {
                           shots: storyboard.shots.map((shot: any) => ({
                               visualDescription: shot.visualDescription,
                               scene: shot.scene,
-                              shotType: shot.shotType,
+                              shotSize: shot.shotSize,
                               cameraAngle: shot.cameraAngle,
                               cameraMovement: shot.cameraMovement
                           }))
@@ -2586,30 +2791,30 @@ export const App = () => {
                       parts.push(shot.visualDescription);
                   }
 
-                  // 2. Shot type mapping (镜头类型)
-                  const shotTypeMap: Record<string, string> = {
-                      '特写': 'extreme close-up shot, intimate details visible, tight focus on subject',
-                      '近景': 'close-up shot, upper body and face clearly visible',
-                      '中景': 'medium shot, waist-up composition, balanced framing',
-                      '全景': 'wide shot, full body and surrounding environment',
-                      '远景': 'extreme wide shot, expansive landscape, establishing shot',
-                      '大远景': 'extreme long shot, vast environment, figures small',
-                      '俯视': 'high angle shot, looking down at subject',
-                      '仰视': 'low angle shot, looking up at subject, dramatic perspective',
-                      '鸟瞰': 'bird\'s eye view, top-down perspective, aerial view'
+                  // 2. Shot size mapping (景别)
+                  const shotSizeMap: Record<string, string> = {
+                      '大远景': 'extreme long shot, vast environment, figures small like ants',
+                      '远景': 'long shot, small figure visible, action and environment',
+                      '全景': 'full shot, entire body visible, head to toe',
+                      '中景': 'medium shot, waist-up composition, social distance',
+                      '中近景': 'medium close-up shot, chest-up, focus on emotion',
+                      '近景': 'close shot, neck and above, intimate examination',
+                      '特写': 'close-up shot, face only, soul window, intense impact',
+                      '大特写': 'extreme close-up shot, partial detail, microscopic view'
                   };
 
-                  if (shot.shotType && shotTypeMap[shot.shotType]) {
-                      parts.push(shotTypeMap[shot.shotType]);
+                  if (shot.shotSize && shotSizeMap[shot.shotSize]) {
+                      parts.push(shotSizeMap[shot.shotSize]);
                   }
 
                   // 3. Camera angle mapping (拍摄角度)
                   const cameraAngleMap: Record<string, string> = {
-                      '平视': 'eye-level angle, natural perspective',
-                      '俯视': 'high angle, downward view, subject looks smaller',
-                      '仰视': 'low angle, upward view, subject looks powerful',
-                      '侧视': 'side profile angle, 90-degree view',
-                      '背面': 'rear view, from behind'
+                      '视平': 'eye-level angle, neutral and natural perspective',
+                      '高位俯拍': 'high angle shot, looking down at subject, makes them appear vulnerable',
+                      '低位仰拍': 'low angle shot, looking up at subject, makes them appear powerful',
+                      '斜拍': 'dutch angle, tilted horizon, creates psychological unease',
+                      '越肩': 'over the shoulder shot, emphasizes relationship and space',
+                      '鸟瞰': 'bird\'s eye view, top-down 90-degree, god-like perspective'
                   };
 
                   if (shot.cameraAngle && cameraAngleMap[shot.cameraAngle]) {
@@ -2858,6 +3063,114 @@ COMPOSITION REQUIREMENTS:
 
                   console.log('[STORYBOARD_IMAGE] All data saved successfully');
               }
+
+          } else if (node.type === NodeType.SORA_VIDEO_GENERATOR) {
+              // --- Sora 2 Video Generator Logic ---
+
+              // 1. Get split shots from STORYBOARD_SPLITTER input nodes
+              const splitterNodes = inputs.filter(n => n?.type === NodeType.STORYBOARD_SPLITTER) as AppNode[];
+              if (splitterNodes.length === 0) {
+                  throw new Error('请连接分镜图拆解节点 (STORYBOARD_SPLITTER)');
+              }
+
+              // Collect all split shots from all connected splitter nodes
+              const allSplitShots: any[] = [];
+              splitterNodes.forEach(splitterNode => {
+                  if (splitterNode.data.splitShots && splitterNode.data.splitShots.length > 0) {
+                      allSplitShots.push(...splitterNode.data.splitShots);
+                  }
+              });
+
+              if (allSplitShots.length === 0) {
+                  throw new Error('未找到任何分镜数据，请确保拆解节点包含分镜');
+              }
+
+              // 2. Get model configuration
+              const modelId = node.data.soraModelId || 'sora-2-yijia-10s-landscape';
+              const model = getSoraModelById(modelId);
+              if (!model) {
+                  throw new Error(`未找到模型: ${modelId}`);
+              }
+
+              // 3. Group shots into task groups based on model duration
+              const taskGroups: SoraTaskGroup[] = [];
+              let currentGroup: any = {
+                  id: `tg-${Date.now()}-${taskGroups.length}`,
+                  taskNumber: taskGroups.length + 1,
+                  totalDuration: 0,
+                  shotIds: [] as string[],
+                  splitShots: [] as any[],
+                  soraPrompt: '',
+                  promptGenerated: false,
+                  imageFused: false,
+                  generationStatus: 'idle' as const
+              };
+
+              allSplitShots.forEach(shot => {
+                  const shotDuration = shot.duration || 0;
+
+                  // Check if adding this shot would exceed the model duration
+                  if (currentGroup.totalDuration + shotDuration > model.duration && currentGroup.shotIds.length > 0) {
+                      // Finalize current group and start a new one
+                      taskGroups.push({ ...currentGroup });
+                      currentGroup = {
+                          id: `tg-${Date.now()}-${taskGroups.length + 1}`,
+                          taskNumber: taskGroups.length + 2,
+                          totalDuration: 0,
+                          shotIds: [],
+                          splitShots: [],
+                          soraPrompt: '',
+                          promptGenerated: false,
+                          imageFused: false,
+                          generationStatus: 'idle' as const
+                      };
+                  }
+
+                  // Add shot to current group
+                  currentGroup.shotIds.push(shot.id);
+                  currentGroup.splitShots.push(shot);
+                  currentGroup.totalDuration += shotDuration;
+              });
+
+              // Don't forget the last group
+              if (currentGroup.shotIds.length > 0) {
+                  taskGroups.push(currentGroup);
+              }
+
+              console.log('[SORA_VIDEO_GENERATOR] Created task groups:', {
+                  totalGroups: taskGroups.length,
+                  modelDuration: model.duration,
+                  shotsPerGroup: taskGroups.map(tg => tg.shotIds.length)
+              });
+
+              // 4. Generate AI-enhanced Sora prompts for each task group
+              const { buildEnhancedSoraPrompt } = await import('./services/soraService');
+
+              // Generate prompts asynchronously
+              for (const tg of taskGroups) {
+                  try {
+                    console.log(`[SORA_VIDEO_GENERATOR] Generating enhanced prompt for task group ${tg.taskNumber}...`);
+                    tg.soraPrompt = await buildEnhancedSoraPrompt(tg.splitShots);
+                    tg.promptGenerated = true;
+                    tg.generationStatus = 'prompt_ready';
+                    console.log(`[SORA_VIDEO_GENERATOR] Prompt generated for task group ${tg.taskNumber}`);
+                  } catch (error) {
+                    console.error(`[SORA_VIDEO_GENERATOR] Failed to generate enhanced prompt for task group ${tg.taskNumber}:`, error);
+                    // Fallback to basic prompt
+                    const { buildSoraStoryPrompt } = await import('./services/soraService');
+                    tg.soraPrompt = buildSoraStoryPrompt(tg.splitShots);
+                    tg.promptGenerated = true;
+                    tg.generationStatus = 'prompt_ready';
+                  }
+              }
+
+              // Save task groups to node data
+              handleNodeUpdate(id, {
+                  taskGroups: taskGroups,
+                  soraModelId: modelId
+              });
+
+              console.log('[SORA_VIDEO_GENERATOR] Task groups created successfully');
 
           } else if (node.type === NodeType.VIDEO_ANALYZER) {
              const vid = node.data.videoUri || inputs.find(n => n?.data.videoUri)?.data.videoUri;

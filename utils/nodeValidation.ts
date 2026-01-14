@@ -199,7 +199,9 @@ export const NODE_DEPENDENCY_RULES: Record<NodeType, {
     allowedInputs: [
       NodeType.STORYBOARD_IMAGE
     ],
-    allowedOutputs: [],  // Terminal node - only for display and export
+    allowedOutputs: [
+      NodeType.SORA_VIDEO_GENERATOR  // Can output to Sora video generation
+    ],
     minInputs: 1,
     maxInputs: 5,  // Can split up to 5 storyboard image nodes
     description: '拆解九宫格/六宫格分镜图为单个分镜，显示图片和详细描述'
@@ -249,6 +251,28 @@ export const NODE_DEPENDENCY_RULES: Record<NodeType, {
     minInputs: 0,
     maxInputs: 10,
     description: '全局风格设定,生成可复用的场景/人物风格描述词模板'
+  },
+
+  // Sora 2 视频生成器 - 接收分镜图拆解输入,生成 Sora 2 视频
+  [NodeType.SORA_VIDEO_GENERATOR]: {
+    allowedInputs: [
+      NodeType.STORYBOARD_SPLITTER
+    ],
+    allowedOutputs: [],  // Terminal node - creates child nodes for results
+    minInputs: 1,
+    maxInputs: 5,  // Can accept up to 5 splitter nodes
+    description: '将分镜数据转换为 Sora 2 视频，支持多镜头分组生成'
+  },
+
+  // Sora 2 视频子节点 - 仅作为显示节点,由父节点自动创建
+  [NodeType.SORA_VIDEO_CHILD]: {
+    allowedInputs: [
+      NodeType.SORA_VIDEO_GENERATOR
+    ],
+    allowedOutputs: [],  // Terminal display node
+    minInputs: 1,
+    maxInputs: 1,
+    description: '显示单个 Sora 2 视频生成结果'
   }
 };
 
@@ -463,6 +487,15 @@ export function canExecuteNode(
       }
       break;
 
+    case NodeType.SORA_VIDEO_GENERATOR:
+      if (inputCount === 0) {
+        return {
+          valid: false,
+          error: '请连接至少一个分镜图拆解节点'
+        };
+      }
+      break;
+
     case NodeType.CHARACTER_NODE:
       if (inputCount === 0) {
         return {
@@ -516,6 +549,7 @@ function getNodeDisplayName(type: NodeType): string {
     [NodeType.STORYBOARD_GENERATOR]: '分镜生成',
     [NodeType.STORYBOARD_IMAGE]: '分镜图设计',
     [NodeType.STORYBOARD_SPLITTER]: '分镜图拆解',
+    [NodeType.SORA_VIDEO_GENERATOR]: 'Sora 2 视频',
     [NodeType.CHARACTER_NODE]: '角色设计',
     [NodeType.DRAMA_ANALYZER]: '剧目分析',
     [NodeType.DRAMA_REFINED]: '剧目精炼',

@@ -136,8 +136,8 @@ export const StoryboardTimeline: React.FC<StoryboardTimelineProps> = ({
 
                             {/* Camera Info */}
                             <div className="mb-2">
-                                <span className="text-[10px] text-slate-500">🎬 镜头：</span>
-                                <span className="text-[10px] text-slate-300 ml-1">{shot.shotType}</span>
+                                <span className="text-[10px] text-slate-500">🎬 景别：</span>
+                                <span className="text-[10px] text-slate-300 ml-1">{shot.shotSize}</span>
                             </div>
                             <div className="mb-2">
                                 <span className="text-[10px] text-slate-500">📐 角度：</span>

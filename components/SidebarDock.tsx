@@ -5,7 +5,7 @@ import {
     Plus, RotateCcw, History, MessageSquare, FolderHeart, X,
     ImageIcon, Video as VideoIcon, Film, Save, FolderPlus,
     Edit, Trash2, Box, ScanFace, Brush, Type, Workflow as WorkflowIcon,
-    Clapperboard, Mic2, Settings, BookOpen, ScrollText, User, Search, Sparkles, Palette, Bug, LayoutGrid, Grid
+    Clapperboard, Mic2, Settings, BookOpen, ScrollText, User, Search, Sparkles, Palette, Bug, LayoutGrid, Grid, Wand2
 } from 'lucide-react';
 import { NodeType, Workflow } from '../types';
 
@@ -62,6 +62,7 @@ const getNodeNameCN = (t: string) => {
         case NodeType.STORYBOARD_GENERATOR: return '分镜生成';
         case NodeType.STORYBOARD_IMAGE: return '分镜图设计';
         case NodeType.STORYBOARD_SPLITTER: return '分镜图拆解';
+        case NodeType.SORA_VIDEO_GENERATOR: return 'Sora 2 视频';
         case NodeType.CHARACTER_NODE: return '角色设计';
         case NodeType.DRAMA_ANALYZER: return '剧目分析';
         case NodeType.DRAMA_REFINED: return '剧目精炼';
@@ -83,6 +84,7 @@ const getNodeIcon = (t: string) => {
         case NodeType.STORYBOARD_GENERATOR: return Clapperboard;
         case NodeType.STORYBOARD_IMAGE: return LayoutGrid;
         case NodeType.STORYBOARD_SPLITTER: return Grid;
+        case NodeType.SORA_VIDEO_GENERATOR: return Wand2;
         case NodeType.CHARACTER_NODE: return User;
         case NodeType.DRAMA_ANALYZER: return Search;
         case NodeType.DRAMA_REFINED: return Sparkles;
@@ -308,7 +310,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     </span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
-                    {[NodeType.IMAGE_GENERATOR, NodeType.SCRIPT_PLANNER, NodeType.SCRIPT_EPISODE, NodeType.CHARACTER_NODE, NodeType.STYLE_PRESET, NodeType.STORYBOARD_GENERATOR, NodeType.STORYBOARD_IMAGE, NodeType.STORYBOARD_SPLITTER, NodeType.DRAMA_ANALYZER].map(t => {
+                    {[NodeType.IMAGE_GENERATOR, NodeType.SCRIPT_PLANNER, NodeType.SCRIPT_EPISODE, NodeType.CHARACTER_NODE, NodeType.STYLE_PRESET, NodeType.STORYBOARD_GENERATOR, NodeType.STORYBOARD_IMAGE, NodeType.STORYBOARD_SPLITTER, NodeType.SORA_VIDEO_GENERATOR, NodeType.DRAMA_ANALYZER].map(t => {
                         const ItemIcon = getNodeIcon(t);
                         return (
                             <button 
