@@ -31,7 +31,7 @@ const DEFAULT_EXPRESSION_PROMPT: PromptPair = {
 - 所有9个表情中保持一致的角色设计
 - 3×3网格构图`,
 
-  en: `3D animated character, high precision 3D modeling, stylized 3D render, PBR shading, subsurface scattering, ambient occlusion, delicate skin texture, flowing fabric clothing, individual hair strands, soft realistic lighting, 3D anime aesthetics.
+  en: `Xianxia 3D animation character, semi-realistic style, Xianxia animation aesthetics, high precision 3D modeling, PBR shading with soft translucency, subsurface scattering, ambient occlusion, delicate and smooth skin texture (not overly realistic), flowing fabric clothing, individual hair strands, soft ethereal lighting, cinematic rim lighting with cool blue tones, otherworldly gaze, elegant and cold demeanor.
 
 PORTRAIT COMPOSITION: Extreme close-up, head and shoulders only, facial expressions focus.
 
@@ -71,7 +71,7 @@ const DEFAULT_THREE_VIEW_PROMPT: PromptPair = {
 
 参考图片：使用表情图作为面部和服装细节的视觉参考。`,
 
-  en: `3D animated character, high precision 3D modeling, stylized 3D render, PBR shading, subsurface scattering, ambient occlusion, delicate skin texture, flowing fabric clothing, individual hair strands, soft realistic lighting, 3D anime aesthetics.
+  en: `Xianxia 3D animation character, semi-realistic style, Xianxia animation aesthetics, high precision 3D modeling, PBR shading with soft translucency, subsurface scattering, ambient occlusion, delicate and smooth skin texture (not overly realistic), flowing fabric clothing, individual hair strands, soft ethereal lighting, cinematic rim lighting with cool blue tones, otherworldly gaze, elegant and cold demeanor.
 
 CHARACTER THREE-VIEW GENERATION TASK:
 Generate a character three-view reference sheet (front, side, back views).
@@ -106,7 +106,7 @@ class PromptManager {
   ): { zh: string; en: string } {
     const basePrompt = customPrompt || DEFAULT_EXPRESSION_PROMPT;
     const appearance = profile?.appearance || profile?.basicStats || 'Detailed character appearance';
-    const negativePrompt = "nsfw, text, watermark, label, signature, bad anatomy, deformed, low quality, writing, letters, logo, interface, ui, full body, standing, legs, feet, full-length portrait, wide shot, environmental background, patterned background, gradient background, 2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D, paper cutout, translucent, ghostly, ethereal, glowing aura";
+    const negativePrompt = "nsfw, text, watermark, label, signature, bad anatomy, deformed, low quality, writing, letters, logo, interface, ui, full body, standing, legs, feet, full-length portrait, wide shot, environmental background, patterned background, gradient background, 2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D, paper cutout, translucent, ghostly, ethereal, glowing aura, overly photorealistic, hyper-realistic skin, photorealistic rendering";
 
     return {
       zh: `${stylePrompt}\n\n${basePrompt.zh.replace('{APPEARANCE}', appearance)}\n\n负面提示词：${negativePrompt}`,
@@ -125,7 +125,7 @@ class PromptManager {
     const basePrompt = customPrompt || DEFAULT_THREE_VIEW_PROMPT;
     const appearance = profile?.appearance || profile?.basicStats || 'Detailed character appearance';
     const stats = profile?.basicStats || profile?.profession || 'Character attributes';
-    const negativePrompt = "nsfw, text, watermark, label, signature, bad anatomy, deformed, low quality, writing, letters, logo, interface, ui, username, website, chinese characters, english text, patterned background, gradient background, scenery, environmental background, shadows on background, 2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D, paper cutout, translucent, ghostly, ethereal, glowing aura";
+    const negativePrompt = "nsfw, text, watermark, label, signature, bad anatomy, deformed, low quality, writing, letters, logo, interface, ui, username, website, chinese characters, english text, patterned background, gradient background, scenery, environmental background, shadows on background, 2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D, paper cutout, translucent, ghostly, ethereal, glowing aura, overly photorealistic, hyper-realistic skin, photorealistic rendering";
 
     return {
       zh: `${stylePrompt}\n\n${basePrompt.zh.replace('{APPEARANCE}', appearance).replace('{STATS}', stats)}\n\n负面提示词：${negativePrompt}`,

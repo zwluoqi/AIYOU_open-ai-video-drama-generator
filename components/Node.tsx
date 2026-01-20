@@ -1,11 +1,10 @@
 
-import { AppNode, NodeStatus, NodeType, StoryboardShot, CharacterProfile, SoraModel } from '../types';
+import { AppNode, NodeStatus, NodeType, StoryboardShot, CharacterProfile } from '../types';
 import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles, ZoomIn, ZoomOut, Minus, Circle, Square, Maximize, Move, RotateCw, TrendingUp, TrendingDown, ArrowRight, ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, Palette, Grid, MoveHorizontal, ArrowUpDown } from 'lucide-react';
 import { VideoModeSelector, SceneDirectorOverlay } from './VideoNodeModules';
 import { PromptEditor } from './PromptEditor';
 import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
-import { getSoraModelById } from '../services/soraConfigService';
-import { IMAGE_MODELS, TEXT_MODELS, VIDEO_MODELS, AUDIO_MODELS, getUserDefaultModel } from '../services/modelConfig';
+import { IMAGE_MODELS, TEXT_MODELS, VIDEO_MODELS, AUDIO_MODELS } from '../services/modelConfig';
 import { promptManager } from '../services/promptManager';
 
 const IMAGE_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
@@ -151,7 +150,10 @@ const SecureVideo = ({ src, className, autoPlay, muted, loop, onMouseEnter, onMo
     }, [src]);
 
     if (error) {
-        return <div className={`flex items-center justify-center bg-zinc-800 text-xs text-red-400 ${className}`}>Load Error</div>;
+        return <div className={`flex flex-col items-center justify-center bg-zinc-800 text-xs text-red-400 ${className}`}>
+            <span>视频链接已失效</span>
+            <span className="text-[9px] text-zinc-500 mt-0.5">Sora URL过期，请重新生成</span>
+        </div>;
     }
 
     if (!blobUrl) {
@@ -2290,6 +2292,65 @@ const NodeComponent: React.FC<NodeProps> = ({
                                               </span>
                                           </div>
                                           <div className="flex items-center gap-1.5">
+                                              {/* Sora2 Config Button */}
+                                              <button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      const currentConfig = tg.sora2Config || { aspect_ratio: '16:9', duration: '10', hd: true };
+                                                      const newConfig = { ...currentConfig, aspect_ratio: currentConfig.aspect_ratio === '16:9' ? '9:16' : '16:9' };
+                                                      onUpdate(node.id, {
+                                                          taskGroups: taskGroups.map((t: any, i: number) =>
+                                                              i === index ? { ...t, sora2Config: newConfig } : t
+                                                          )
+                                                      });
+                                                  }}
+                                                  className="px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 text-white text-[8px] rounded transition-colors"
+                                                  title="切换横/竖屏"
+                                              >
+                                                  📐
+                                              </button>
+
+                                              {/* Duration Toggle */}
+                                              <button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      const durations = ['5', '10', '15'];
+                                                      const currentIndex = durations.indexOf(tg.sora2Config?.duration || '10');
+                                                      const nextDuration = durations[(currentIndex + 1) % 3];
+                                                      const baseConfig = { aspect_ratio: '16:9', duration: '10', hd: true };
+                                                      const newConfig = { ...baseConfig, ...tg.sora2Config, duration: nextDuration };
+                                                      onUpdate(node.id, {
+                                                          taskGroups: taskGroups.map((t: any, i: number) =>
+                                                              i === index ? { ...t, sora2Config: newConfig } : t
+                                                          )
+                                                      });
+                                                  }}
+                                                  className="px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 text-white text-[8px] rounded transition-colors"
+                                                  title={`切换时长: ${tg.sora2Config?.duration || '10'}秒`}
+                                              >
+                                                  ⏱️
+                                              </button>
+
+                                              {/* HD Toggle */}
+                                              <button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      const newConfig = tg.sora2Config || { aspect_ratio: '16:9', duration: '10', hd: true };
+                                                      newConfig.hd = !newConfig.hd;
+                                                      onUpdate(node.id, {
+                                                          taskGroups: taskGroups.map((t: any, i: number) =>
+                                                              i === index ? { ...t, sora2Config: newConfig } : t
+                                                          )
+                                                      });
+                                                  }}
+                                                  className={`px-1.5 py-0.5 text-white text-[8px] rounded transition-colors ${
+                                                      (tg.sora2Config?.hd ?? true) ? 'bg-green-500 hover:bg-green-600' : 'bg-slate-600 hover:bg-slate-500'
+                                                  }`}
+                                                  title={`高清: ${tg.sora2Config?.hd ?? true ? '开启' : '关闭'}`}
+                                              >
+                                                  🎬
+                                              </button>
+
                                               {/* Generate Video Button */}
                                               <button
                                                   onClick={() => onAction?.(node.id, `generate-video:${index}`)}
@@ -2568,65 +2629,172 @@ const NodeComponent: React.FC<NodeProps> = ({
           const isCompliant = node.data.isCompliant;
           const violationReason = node.data.violationReason;
           const locallySaved = node.data.locallySaved;
+          const taskNumber = node.data.taskNumber;
+
+          const [isPlaying, setIsPlaying] = useState(false);
+          const [currentTime, setCurrentTime] = useState(0);
+          const [durationValue, setDurationValue] = useState(0);
+          const videoRef = useRef<HTMLVideoElement>(null);
+
+          // 格式化时间显示
+          const formatTime = (time: number) => {
+              const mins = Math.floor(time / 60);
+              const secs = Math.floor(time % 60);
+              return `${mins}:${secs.toString().padStart(2, '0')}`;
+          };
+
+          // 下载视频
+          const handleDownload = async () => {
+              if (videoUrl) {
+                  try {
+                      const response = await fetch(videoUrl);
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `sora-task-${taskNumber || 'video'}-${Date.now()}.mp4`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                  } catch (e) {
+                      console.error('Download failed:', e);
+                  }
+              }
+          };
 
           return (
-              <div className="w-full h-full flex flex-col bg-zinc-900 overflow-hidden">
-                  {/* Video Player or Placeholder */}
-                  <div className="flex-1 relative">
-                      {videoUrl ? (
-                          <SecureVideo
-                              videoRef={mediaRef}
+              <div className="w-full h-full flex flex-col bg-zinc-900 overflow-hidden relative">
+                  {/* Video Player */}
+                  {videoUrl ? (
+                      <>
+                          <video
+                              ref={(el) => {
+                                  if (el) {
+                                      videoRef.current = el;
+                                      // 设置视频元数据加载监听
+                                      el.onloadedmetadata = () => {
+                                          setDurationValue(el.duration);
+                                      };
+                                  }
+                              }}
                               src={videoUrl}
                               className="w-full h-full object-cover bg-zinc-900"
                               loop
-                              muted
-                              autoPlay
+                              playsInline
+                              onTimeUpdate={() => {
+                                  if (videoRef.current) {
+                                      setCurrentTime(videoRef.current.currentTime);
+                                  }
+                              }}
+                              onPlay={() => setIsPlaying(true)}
+                              onPause={() => setIsPlaying(false)}
+                              onEnded={() => setIsPlaying(false)}
                           />
-                      ) : violationReason || node.data.error ? (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-red-400 bg-black/40 p-6 text-center">
-                              <AlertCircle className="text-red-500 mb-1" size={32} />
-                              <span className="text-xs font-medium text-red-200">{violationReason || node.data.error}</span>
-                          </div>
-                      ) : (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
-                              <Video size={32} className="opacity-50" />
-                              <span className="text-xs font-medium">等待视频生成</span>
-                          </div>
-                      )}
 
-                      {/* Overlay Info */}
-                      {videoUrl && (
-                          <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
+                          {/* Controls Overlay */}
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-3">
+                              {/* Progress Bar */}
+                              <div className="w-full mb-3">
+                                  <div
+                                      className="w-full h-1 bg-white/20 rounded-full cursor-pointer group/relative"
+                                      onClick={(e) => {
+                                          if (videoRef.current) {
+                                              const rect = e.currentTarget.getBoundingClientRect();
+                                              const x = e.clientX - rect.left;
+                                              const newTime = (x / rect.width) * durationValue;
+                                              videoRef.current.currentTime = newTime;
+                                              setCurrentTime(newTime);
+                                          }
+                                      }}
+                                  >
+                                      <div
+                                          className="h-full bg-cyan-500 rounded-full relative"
+                                          style={{ width: `${durationValue > 0 ? (currentTime / durationValue) * 100 : 0}%` }}
+                                      >
+                                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </div>
+                                  </div>
+                                  {/* Time Display */}
+                                  <div className="flex justify-between text-[10px] text-white/70 mt-1">
+                                      <span>{formatTime(currentTime)}</span>
+                                      <span>{formatTime(durationValue)}</span>
+                                  </div>
+                              </div>
+
+                              {/* Control Buttons */}
                               <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
+                                  <div className="flex items-center gap-2">
+                                      {/* Play/Pause Button */}
+                                      <button
+                                          onClick={() => {
+                                              if (videoRef.current) {
+                                                  if (isPlaying) {
+                                                      videoRef.current.pause();
+                                                  } else {
+                                                      videoRef.current.play();
+                                                  }
+                                              }
+                                          }}
+                                          className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+                                      >
+                                          {isPlaying ? (
+                                              <Pause size={14} className="text-white" />
+                                          ) : (
+                                              <Play size={14} className="text-white ml-0.5" />
+                                          )}
+                                      </button>
+
+                                      {/* Duration Badge */}
                                       {duration && (
-                                          <span className="text-[10px] text-white/80">
-                                              ⏱️ {duration}
+                                          <span className="text-[10px] text-white/70 px-2 py-0.5 bg-white/10 rounded">
+                                              {duration}
                                           </span>
                                       )}
+
+                                      {/* Status Badges */}
                                       {isCompliant === false && (
-                                          <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-[9px] rounded-full font-medium" title={violationReason}>
-                                              ⚠️ 内容违规
+                                          <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-[9px] rounded-full" title={violationReason}>
+                                              ⚠️ 违规
                                           </span>
                                       )}
                                       {locallySaved && (
-                                          <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-[9px] rounded-full font-medium">
+                                          <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-[9px] rounded-full">
                                               ✓ 已保存
                                           </span>
                                       )}
                                   </div>
+
+                                  {/* Download Button */}
+                                  <button
+                                      onClick={handleDownload}
+                                      className="w-8 h-8 flex items-center justify-center bg-cyan-500/20 hover:bg-cyan-500/40 rounded-full transition-colors"
+                                      title="下载视频"
+                                  >
+                                      <Download size={14} className="text-cyan-400" />
+                                  </button>
                               </div>
                           </div>
-                      )}
+                      </>
+                  ) : violationReason || node.data.error ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-red-400 bg-black/40 p-6 text-center">
+                          <AlertCircle className="text-red-500 mb-1" size={32} />
+                          <span className="text-xs font-medium text-red-200">{violationReason || node.data.error}</span>
+                      </div>
+                  ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
+                          <VideoIcon size={32} className="opacity-50" />
+                          <span className="text-xs font-medium">等待视频生成</span>
+                      </div>
+                  )}
 
-                      {/* Error overlay */}
-                      {node.status === NodeStatus.ERROR && (
-                          <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
-                              <AlertCircle className="text-red-500 mb-2" />
-                              <span className="text-xs text-red-200">{node.data.error || violationReason}</span>
-                          </div>
-                      )}
-                  </div>
+                  {/* Error overlay */}
+                  {node.status === NodeStatus.ERROR && !videoUrl && (
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+                          <AlertCircle className="text-red-500 mb-2" />
+                          <span className="text-xs text-red-200">{node.data.error}</span>
+                      </div>
+                  )}
               </div>
           );
       }
@@ -2826,78 +2994,102 @@ const NodeComponent: React.FC<NodeProps> = ({
      // Special handling for SORA_VIDEO_GENERATOR
      if (node.type === NodeType.SORA_VIDEO_GENERATOR) {
          const taskGroups = node.data.taskGroups || [];
-         const soraModelId = node.data.soraModelId || getUserDefaultModel('video');
-         const selectedModel = VIDEO_MODELS.find(m => m.id === soraModelId);
-
          return (
              <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
                  <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                     {/* Model Selection */}
+                     {/* Sora2 Configuration */}
                      <div className="flex flex-col gap-2">
                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
                              <Wand2 size={12} className="text-green-400" />
-                             <span>Sora 2 模型</span>
+                             <span>Sora 2 配置</span>
                          </div>
-                         <select
-                             className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-green-500/50"
-                             value={soraModelId}
-                             onChange={(e) => onUpdate(node.id, { soraModelId: e.target.value })}
-                             onMouseDown={e => e.stopPropagation()}
-                         >
-                             {VIDEO_MODELS.filter(m => m.tags.includes('sora')).map(model => (
-                                 <option key={model.id} value={model.id}>
-                                     {model.name}
-                                 </option>
-                             ))}
-                         </select>
 
-                         {/* Model Details */}
-                         {selectedModel && (
-                             <div className="bg-black/30 rounded-lg p-2 space-y-1.5 border border-white/5">
-                                 <div className="grid grid-cols-2 gap-2">
-                                     <div>
-                                         <span className="text-[9px] font-bold text-slate-500 uppercase">时长</span>
-                                         <p className="text-xs text-slate-300">
-                                             {selectedModel.capabilities.find(c => c.includes('秒视频'))?.replace('秒视频', '') || 'N/A'}秒
-                                         </p>
+                         {/* Config Controls - 3 Options */}
+                         <div className="bg-black/30 rounded-lg p-2 border border-white/5">
+                             {/* Get current config from node level, not task groups */}
+                             {(() => {
+                                 const currentConfig = node.data.sora2Config || { aspect_ratio: '16:9', duration: '10', hd: true };
+                                 const updateConfig = (updates: any) => {
+                                     onUpdate(node.id, {
+                                         sora2Config: { ...currentConfig, ...updates }
+                                     });
+                                 };
+                                 return (
+                                     <>
+                                     {/* Aspect Ratio & Duration Row */}
+                                     <div className="flex items-center gap-3 mb-2">
+                                         {/* Aspect Ratio Toggle */}
+                                         <div className="flex-1">
+                                             <div className="text-[9px] font-bold text-slate-500 mb-1">视频比例</div>
+                                             <div className="flex gap-1">
+                                                 <button
+                                                     onClick={() => updateConfig({ aspect_ratio: '16:9' as const })}
+                                                     onMouseDown={(e) => e.stopPropagation()}
+                                                     className={`flex-1 px-2 py-1.5 text-[10px] rounded transition-colors ${
+                                                         currentConfig.aspect_ratio === '16:9'
+                                                             ? 'bg-indigo-500 text-white'
+                                                             : 'bg-white/10 text-slate-400 hover:bg-white/20'
+                                                     }`}
+                                                 >
+                                                     16:9 横屏
+                                                 </button>
+                                                 <button
+                                                     onClick={() => updateConfig({ aspect_ratio: '9:16' as const })}
+                                                     onMouseDown={(e) => e.stopPropagation()}
+                                                     className={`flex-1 px-2 py-1.5 text-[10px] rounded transition-colors ${
+                                                         currentConfig.aspect_ratio === '9:16'
+                                                             ? 'bg-indigo-500 text-white'
+                                                             : 'bg-white/10 text-slate-400 hover:bg-white/20'
+                                                     }`}
+                                                 >
+                                                     9:16 竖屏
+                                                 </button>
+                                             </div>
+                                         </div>
+
+                                         {/* Duration Selector */}
+                                         <div className="flex-1">
+                                             <div className="text-[9px] font-bold text-slate-500 mb-1">时长</div>
+                                             <div className="flex gap-1">
+                                                 {(['5', '10', '15'] as const).map((dur) => (
+                                                     <button
+                                                         key={dur}
+                                                         onClick={() => updateConfig({ duration: dur as any })}
+                                                         onMouseDown={(e) => e.stopPropagation()}
+                                                         className={`flex-1 px-2 py-1.5 text-[10px] rounded transition-colors ${
+                                                             currentConfig.duration === dur
+                                                                 ? 'bg-indigo-500 text-white'
+                                                                 : 'bg-white/10 text-slate-400 hover:bg-white/20'
+                                                         }`}
+                                                     >
+                                                         {dur}秒
+                                                     </button>
+                                                 ))}
+                                             </div>
+                                         </div>
                                      </div>
-                                     <div>
-                                         <span className="text-[9px] font-bold text-slate-500 uppercase">比例</span>
-                                         <p className="text-xs text-slate-300">
-                                             {selectedModel.tags.includes('vertical') ? '竖屏 (9:16)' :
-                                              selectedModel.tags.includes('horizontal') ? '横屏 (16:9)' :
-                                              selectedModel.capabilities.find(c => c.includes('9:16') || c.includes('16:9')) || 'N/A'}
-                                         </p>
+
+                                     {/* HD Toggle */}
+                                     <div className="flex items-center justify-between px-2 py-1.5 bg-white/5 rounded">
+                                         <span className="text-[10px] text-slate-400">高清画质 (1080p)</span>
+                                         <button
+                                             onClick={() => updateConfig({ hd: !currentConfig.hd })}
+                                             onMouseDown={(e) => e.stopPropagation()}
+                                             className={`w-10 h-5 rounded-full transition-colors relative ${
+                                                 currentConfig.hd ? 'bg-green-500' : 'bg-slate-600'
+                                             }`}
+                                         >
+                                             <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                                                 currentConfig.hd ? 'left-5' : 'left-0.5'
+                                             }`}></div>
+                                         </button>
                                      </div>
-                                     <div>
-                                         <span className="text-[9px] font-bold text-slate-500 uppercase">分辨率</span>
-                                         <p className="text-xs text-slate-300">
-                                             {selectedModel.capabilities.find(c => c.includes('1280x') || c.includes('1920x') || c.includes('1080x'))?.split(' ')[1] || '720p/1080p'}
-                                         </p>
-                                     </div>
-                                     <div>
-                                         <span className="text-[9px] font-bold text-green-400 uppercase">价格</span>
-                                         <p className="text-xs text-green-300 font-bold">
-                                             {selectedModel.capabilities.find(c => c.includes('¥')) || '按次计费'}
-                                         </p>
-                                     </div>
-                                 </div>
-                                 <div>
-                                     <span className="text-[9px] font-bold text-slate-500 uppercase">描述</span>
-                                     <p className="text-xs text-slate-300">{selectedModel.description}</p>
-                                 </div>
-                                 <div className="flex items-center gap-2 flex-wrap">
-                                     <span className="text-[9px] font-bold text-slate-500 uppercase">特性</span>
-                                     {selectedModel.capabilities.slice(0, 4).map((cap, i) => (
-                                         <span key={i} className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] rounded">{cap}</span>
-                                     ))}
-                                     {selectedModel.tags.includes('pro') && (
-                                         <span className="px-1.5 py-0.5 bg-purple-500/30 text-purple-300 text-[9px] rounded font-bold">PRO</span>
-                                     )}
-                                 </div>
-                             </div>
-                         )}
+                                     </>
+                                 );
+                             })()}
+                         </div>
                      </div>
+
 
                      {/* Action Buttons */}
                      {taskGroups.length === 0 ? (

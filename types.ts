@@ -285,6 +285,13 @@ export interface SoraModel {
   tags: string[]; // 标签
 }
 
+// Sora2 用户可配置项
+export interface Sora2UserConfig {
+  aspect_ratio: '16:9' | '9:16';
+  duration: '5' | '10' | '15';
+  hd: boolean;
+}
+
 export interface SoraTaskGroup {
   id: string;
   taskNumber: number;
@@ -294,6 +301,9 @@ export interface SoraTaskGroup {
 
   // Sora 模型
   soraModelId?: string; // Sora 模型 ID
+
+  // Sora2 用户配置
+  sora2Config?: Sora2UserConfig;
 
   // Sora 提示词
   soraPrompt: string;
@@ -323,11 +333,15 @@ export interface SoraStorageConfig {
 }
 
 export interface OSSConfig {
-  provider: 'tencent' | 'aliyun';
-  bucket: string;
-  region: string;
-  accessKey: string;
-  secretKey: string;
+  provider: 'imgbb' | 'tencent' | 'aliyun';
+  // ImgBB 专用
+  imgbbApiKey?: string;
+  imgbbExpiration?: number;  // 过期时间(秒)，0=永久
+  // 腾讯云/阿里云 专用
+  bucket?: string;
+  region?: string;
+  accessKey?: string;
+  secretKey?: string;
 }
 
 // Window interface for Google AI Studio key selection

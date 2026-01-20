@@ -1,6 +1,6 @@
 /**
  * 角色生成状态管理服务
- * 解决多个角色并发生成时的状态混乱问题
+ * 使用独立ID管理每个角色的生成状态，避免状态互相覆盖
  */
 
 import { CharacterProfile } from '../types';
@@ -14,40 +14,37 @@ export type TaskStatus = 'PENDING' | 'GENERATING' | 'SUCCESS' | 'FAILED';
 // 单个生成任务
 export interface CharacterTask {
   id: string; // 全局唯一任务ID
-  characterId: string; // 角色名称
+  characterId: string; // 角色唯一ID
   nodeId: string; // 节点ID
   taskType: CharacterTaskType;
   status: TaskStatus;
   startTime?: number;
   endTime?: number;
   error?: string;
-  result?: {
-    expressionSheet?: string;
-    threeViewSheet?: string;
-    profile?: Partial<CharacterProfile>;
-  };
+  result?: any;
 }
 
-// 角色生成状态（对外展示用）
+// 角色生成状态（内部状态）
 export interface CharacterGenerationState {
-  characterId: string;
-  characterName: string;
-  nodeId: string;
+  // 唯一标识符（nodeId + 角色名）
+  characterId: string;    // 唯一ID，格式：`${nodeId}|${characterName}`
+  nodeId: string;         // 节点ID
+  characterName: string;  // 角色名称（显示用）
 
-  // 角色基础数据
+  // 角色数据
   profile: CharacterProfile | null;
 
-  // 生成状态
+  // 各阶段生成状态
   profileStatus: TaskStatus;
   expressionStatus: TaskStatus;
   threeViewStatus: TaskStatus;
 
-  // 生成中的任务ID（用于取消）
+  // 当前任务ID（用于取消）
   currentProfileTaskId?: string;
   currentExpressionTaskId?: string;
   currentThreeViewTaskId?: string;
 
-  // 结果数据
+  // 生成结果
   expressionSheet?: string;
   threeViewSheet?: string;
 
@@ -64,6 +61,10 @@ export interface CharacterGenerationState {
 
   // UI状态
   isSaved: boolean;
+
+  // 创建时间（用于调试）
+  createdAt: number;
+  updatedAt: number;
 }
 
 // 生成队列项
@@ -75,8 +76,8 @@ interface QueueItem {
 }
 
 class CharacterGenerationManager {
-  // 存储所有节点角色的状态
-  private nodeStates: Map<string, Map<string, CharacterGenerationState>> = new Map();
+  // 存储所有角色的状态，key 是 characterId
+  private states: Map<string, CharacterGenerationState> = new Map();
 
   // 存储所有任务（用于跟踪和取消）
   private tasks: Map<string, CharacterTask> = new Map();
@@ -86,41 +87,68 @@ class CharacterGenerationManager {
   private isProcessingQueue: boolean = false;
 
   /**
-   * 获取节点的所有角色状态
+   * 创建唯一的角色ID
    */
-  getNodeStates(nodeId: string): Map<string, CharacterGenerationState> {
-    if (!this.nodeStates.has(nodeId)) {
-      this.nodeStates.set(nodeId, new Map());
-    }
-    return this.nodeStates.get(nodeId)!;
+  private createCharacterId(nodeId: string, characterName: string): string {
+    return `${nodeId}|${characterName}`;
+  }
+
+  /**
+   * 创建任务ID
+   */
+  private createTaskId(nodeId: string, characterId: string, taskType: CharacterTaskType): string {
+    return `${nodeId}-${characterId}-${taskType}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   }
 
   /**
    * 获取单个角色的状态
    */
-  getCharacterState(nodeId: string, characterId: string): CharacterGenerationState | null {
-    const nodeStates = this.getNodeStates(nodeId);
-    return nodeStates.get(characterId) || null;
+  getCharacterState(nodeId: string, characterName: string): CharacterGenerationState | null {
+    const characterId = this.createCharacterId(nodeId, characterName);
+    return this.states.get(characterId) || null;
   }
 
   /**
-   * 初始化角色（当添加新角色时调用）
+   * 获取节点的所有角色状态
    */
-  initializeCharacter(nodeId: string, characterId: string, characterName: string): CharacterGenerationState {
-    const nodeStates = this.getNodeStates(nodeId);
+  getCharactersForNode(nodeId: string): CharacterProfile[] {
+    const characters: CharacterProfile[] = [];
+
+    for (const [characterId, state] of this.states) {
+      if (state.nodeId === nodeId) {
+        characters.push(this.stateToProfile(state));
+      }
+    }
+
+    console.log('[CharacterGenerationManager] getCharactersForNode:', nodeId, 'count:', characters.length,
+      'characters:', characters.map(c => ({ name: c.name, status: c.status })));
+
+    return characters;
+  }
+
+  /**
+   * 初始化新角色
+   */
+  initializeCharacter(nodeId: string, characterName: string): CharacterGenerationState {
+    const characterId = this.createCharacterId(nodeId, characterName);
+    const now = Date.now();
+
+    console.log('[CharacterGenerationManager] initializeCharacter:', { nodeId, characterName, characterId });
 
     const state: CharacterGenerationState = {
       characterId,
-      characterName,
       nodeId,
+      characterName,
       profile: null,
       profileStatus: 'PENDING',
       expressionStatus: 'PENDING',
       threeViewStatus: 'PENDING',
-      isSaved: false
+      isSaved: false,
+      createdAt: now,
+      updatedAt: now
     };
 
-    nodeStates.set(characterId, state);
+    this.states.set(characterId, state);
     return state;
   }
 
@@ -129,23 +157,38 @@ class CharacterGenerationManager {
    */
   private updateCharacterState(
     nodeId: string,
-    characterId: string,
+    characterName: string,
     updates: Partial<CharacterGenerationState>
   ): CharacterGenerationState {
-    const nodeStates = this.getNodeStates(nodeId);
-    const currentState = nodeStates.get(characterId);
+    const characterId = this.createCharacterId(nodeId, characterName);
+    const currentState = this.states.get(characterId);
 
     if (!currentState) {
-      throw new Error(`Character ${characterId} not found in node ${nodeId}`);
+      console.error('[CharacterGenerationManager] updateCharacterState: Character not found:', { nodeId, characterName, characterId });
+      throw new Error(`Character ${characterName} not found in node ${nodeId}`);
     }
 
-    // 不可变更新
+    // 不可变更新 - 创建新对象
     const newState: CharacterGenerationState = {
       ...currentState,
-      ...updates
+      ...updates,
+      updatedAt: Date.now()
     };
 
-    nodeStates.set(characterId, newState);
+    this.states.set(characterId, newState);
+
+    console.log('[CharacterGenerationManager] updateCharacterState:', {
+      nodeId,
+      characterName,
+      updates: Object.keys(updates),
+      profileStatus: newState.profileStatus,
+      expressionStatus: newState.expressionStatus,
+      threeViewStatus: newState.threeViewStatus,
+      hasProfile: !!newState.profile,
+      hasExpression: !!newState.expressionSheet,
+      hasThreeView: !!newState.threeViewSheet
+    });
+
     return newState;
   }
 
@@ -164,6 +207,13 @@ class CharacterGenerationManager {
         onError: reject
       });
 
+      console.log('[CharacterGenerationManager] enqueueTask:', {
+        taskId: task.id,
+        characterId: task.characterId,
+        taskType: task.taskType,
+        queueLength: this.queue.length
+      });
+
       this.processQueue();
     });
   }
@@ -180,6 +230,14 @@ class CharacterGenerationManager {
 
     while (this.queue.length > 0) {
       const item = this.queue.shift()!;
+      const { nodeId, characterId, taskType } = item.task;
+
+      console.log('[CharacterGenerationManager] Processing task:', {
+        taskId: item.task.id,
+        characterId,
+        taskType,
+        remainingQueue: this.queue.length
+      });
 
       try {
         // 更新任务状态为 GENERATING
@@ -193,6 +251,13 @@ class CharacterGenerationManager {
 
         item.onSuccess(result);
       } catch (error) {
+        console.error('[CharacterGenerationManager] Task failed:', {
+          taskId: item.task.id,
+          characterId,
+          taskType,
+          error: (error as Error).message
+        });
+
         // 更新任务状态为 FAILED
         this.updateTaskStatus(item.task.id, 'FAILED', undefined, error);
 
@@ -213,7 +278,10 @@ class CharacterGenerationManager {
     error?: Error
   ) {
     const task = this.tasks.get(taskId);
-    if (!task) return;
+    if (!task) {
+      console.error('[CharacterGenerationManager] updateTaskStatus: Task not found:', taskId);
+      return;
+    }
 
     // 更新任务
     task.status = status;
@@ -221,25 +289,37 @@ class CharacterGenerationManager {
     if (error) task.error = error.message;
     if (result) task.result = result;
 
-    // 更新角色状态
-    const state = this.getCharacterState(task.nodeId, task.characterId);
-    if (!state) return;
+    // 从 characterId 中提取 nodeId 和 characterName
+    const parts = task.characterId.split('|');
+    const nodeId = parts[0];
+    const characterName = parts.slice(1).join('|'); // 处理角色名中可能包含 | 的情况
 
+    console.log('[CharacterGenerationManager] updateTaskStatus:', {
+      taskId,
+      characterId: task.characterId,
+      nodeId,
+      characterName,
+      taskType: task.taskType,
+      status,
+      hasResult: !!result
+    });
+
+    // 更新角色状态
     switch (task.taskType) {
       case 'PROFILE':
         if (status === 'GENERATING') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             profileStatus: 'GENERATING',
             currentProfileTaskId: taskId
           });
         } else if (status === 'SUCCESS') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             profileStatus: 'SUCCESS',
-            profile: result || null,  // result is the CharacterProfile object itself
+            profile: result || null,
             currentProfileTaskId: undefined
           });
         } else if (status === 'FAILED') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             profileStatus: 'FAILED',
             profileError: error?.message,
             currentProfileTaskId: undefined
@@ -249,18 +329,18 @@ class CharacterGenerationManager {
 
       case 'EXPRESSION':
         if (status === 'GENERATING') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             expressionStatus: 'GENERATING',
             currentExpressionTaskId: taskId
           });
         } else if (status === 'SUCCESS') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             expressionStatus: 'SUCCESS',
-            expressionSheet: result,  // result is the image URL string
+            expressionSheet: result,
             currentExpressionTaskId: undefined
           });
         } else if (status === 'FAILED') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             expressionStatus: 'FAILED',
             expressionError: error?.message,
             currentExpressionTaskId: undefined
@@ -270,18 +350,18 @@ class CharacterGenerationManager {
 
       case 'THREE_VIEW':
         if (status === 'GENERATING') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             threeViewStatus: 'GENERATING',
             currentThreeViewTaskId: taskId
           });
         } else if (status === 'SUCCESS') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             threeViewStatus: 'SUCCESS',
-            threeViewSheet: result,  // result is the image URL string
+            threeViewSheet: result,
             currentThreeViewTaskId: undefined
           });
         } else if (status === 'FAILED') {
-          this.updateCharacterState(task.nodeId, task.characterId, {
+          this.updateCharacterState(nodeId, characterName, {
             threeViewStatus: 'FAILED',
             threeViewError: error?.message,
             currentThreeViewTaskId: undefined
@@ -297,25 +377,21 @@ class CharacterGenerationManager {
   }
 
   /**
-   * 创建任务ID
-   */
-  private createTaskId(nodeId: string, characterId: string, taskType: CharacterTaskType): string {
-    return `${nodeId}-${characterId}-${taskType}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-  }
-
-  /**
    * 生成角色档案
    */
   async generateProfile(
     nodeId: string,
-    characterId: string,
     characterName: string,
     executor: () => Promise<CharacterProfile>
   ): Promise<CharacterProfile> {
+    const characterId = this.createCharacterId(nodeId, characterName);
+
+    console.log('[CharacterGenerationManager] generateProfile:', { nodeId, characterName, characterId });
+
     // 确保角色已初始化
-    let state = this.getCharacterState(nodeId, characterId);
+    let state = this.states.get(characterId);
     if (!state) {
-      state = this.initializeCharacter(nodeId, characterId, characterName);
+      state = this.initializeCharacter(nodeId, characterName);
     }
 
     // 创建任务
@@ -332,7 +408,7 @@ class CharacterGenerationManager {
     this.tasks.set(taskId, task);
 
     // 立即更新状态为GENERATING，这样UI可以立即响应
-    this.updateCharacterState(nodeId, characterId, {
+    this.updateCharacterState(nodeId, characterName, {
       profileStatus: 'GENERATING',
       currentProfileTaskId: taskId
     });
@@ -346,14 +422,17 @@ class CharacterGenerationManager {
    */
   async generateExpression(
     nodeId: string,
-    characterId: string,
     characterName: string,
     executor: () => Promise<string>
   ): Promise<string> {
+    const characterId = this.createCharacterId(nodeId, characterName);
+
+    console.log('[CharacterGenerationManager] generateExpression:', { nodeId, characterName, characterId });
+
     // 确保角色已初始化
-    let state = this.getCharacterState(nodeId, characterId);
+    let state = this.states.get(characterId);
     if (!state) {
-      state = this.initializeCharacter(nodeId, characterId, characterName);
+      state = this.initializeCharacter(nodeId, characterName);
     }
 
     // 创建任务
@@ -370,7 +449,7 @@ class CharacterGenerationManager {
     this.tasks.set(taskId, task);
 
     // 立即更新状态为GENERATING，这样UI可以立即响应
-    this.updateCharacterState(nodeId, characterId, {
+    this.updateCharacterState(nodeId, characterName, {
       expressionStatus: 'GENERATING',
       currentExpressionTaskId: taskId
     });
@@ -384,14 +463,17 @@ class CharacterGenerationManager {
    */
   async generateThreeView(
     nodeId: string,
-    characterId: string,
     characterName: string,
     executor: () => Promise<string>
   ): Promise<string> {
+    const characterId = this.createCharacterId(nodeId, characterName);
+
+    console.log('[CharacterGenerationManager] generateThreeView:', { nodeId, characterName, characterId });
+
     // 确保角色已初始化
-    let state = this.getCharacterState(nodeId, characterId);
+    let state = this.states.get(characterId);
     if (!state) {
-      state = this.initializeCharacter(nodeId, characterId, characterName);
+      state = this.initializeCharacter(nodeId, characterName);
     }
 
     // 创建任务
@@ -408,7 +490,7 @@ class CharacterGenerationManager {
     this.tasks.set(taskId, task);
 
     // 立即更新状态为GENERATING，这样UI可以立即响应
-    this.updateCharacterState(nodeId, characterId, {
+    this.updateCharacterState(nodeId, characterName, {
       threeViewStatus: 'GENERATING',
       currentThreeViewTaskId: taskId
     });
@@ -420,11 +502,14 @@ class CharacterGenerationManager {
   /**
    * 保存角色到库
    */
-  saveCharacter(nodeId: string, characterId: string): void {
-    const state = this.getCharacterState(nodeId, characterId);
+  saveCharacter(nodeId: string, characterName: string): void {
+    const characterId = this.createCharacterId(nodeId, characterName);
+    const state = this.states.get(characterId);
     if (!state) return;
 
-    this.updateCharacterState(nodeId, characterId, {
+    console.log('[CharacterGenerationManager] saveCharacter:', { nodeId, characterName, characterId });
+
+    this.updateCharacterState(nodeId, characterName, {
       isSaved: true
     });
   }
@@ -432,25 +517,56 @@ class CharacterGenerationManager {
   /**
    * 删除角色
    */
-  deleteCharacter(nodeId: string, characterId: string): void {
-    const nodeStates = this.getNodeStates(nodeId);
-    nodeStates.delete(characterId);
+  deleteCharacter(nodeId: string, characterName: string): void {
+    const characterId = this.createCharacterId(nodeId, characterName);
+
+    console.log('[CharacterGenerationManager] deleteCharacter:', { nodeId, characterName, characterId });
+
+    this.states.delete(characterId);
+
+    // 清理该角色的所有任务
+    for (const [taskId, task] of this.tasks) {
+      if (task.characterId === characterId) {
+        this.tasks.delete(taskId);
+      }
+    }
+
+    // 从队列中移除该角色的任务
+    this.queue = this.queue.filter(item => item.task.characterId !== characterId);
   }
 
   /**
-   * 获取节点的所有角色（用于UI展示）
+   * 清理节点数据
    */
-  getCharactersForNode(nodeId: string): CharacterProfile[] {
-    const nodeStates = this.getNodeStates(nodeId);
-    return Array.from(nodeStates.values()).map(state => this.stateToProfile(state));
+  clearNode(nodeId: string): void {
+    console.log('[CharacterGenerationManager] clearNode:', { nodeId });
+
+    // 删除该节点的所有角色状态
+    for (const [characterId, state] of this.states) {
+      if (state.nodeId === nodeId) {
+        this.states.delete(characterId);
+      }
+    }
+
+    // 清理该节点的所有任务
+    for (const [taskId, task] of this.tasks) {
+      if (task.nodeId === nodeId) {
+        this.tasks.delete(taskId);
+      }
+    }
+
+    // 从队列中移除该节点的任务
+    this.queue = this.queue.filter(item => item.task.nodeId !== nodeId);
   }
 
   /**
    * 将内部状态转换为 CharacterProfile（兼容现有代码）
    */
   private stateToProfile(state: CharacterGenerationState): CharacterProfile {
+    const status = this.getOverallStatus(state);
+
     return {
-      id: `${state.nodeId}-${state.characterId}`,
+      id: `${state.nodeId}-${state.characterName}`,
       name: state.characterName,
       alias: state.profile?.alias,
       basicStats: state.profile?.basicStats,
@@ -475,7 +591,7 @@ class CharacterGenerationManager {
       threeViewPromptEn: state.threeViewPromptEn,
 
       // 状态
-      status: this.getOverallStatus(state),
+      status: status,
       error: this.getOverallError(state),
 
       // UI状态
@@ -523,25 +639,26 @@ class CharacterGenerationManager {
   }
 
   /**
-   * 清理节点数据
-   */
-  clearNode(nodeId: string): void {
-    this.nodeStates.delete(nodeId);
-
-    // 清理该节点的所有任务
-    for (const [taskId, task] of this.tasks) {
-      if (task.nodeId === nodeId) {
-        this.tasks.delete(taskId);
-      }
-    }
-  }
-
-  /**
    * 获取节点状态快照（用于调试）
    */
   getDebugSnapshot(nodeId: string): any {
-    const nodeStates = this.getNodeStates(nodeId);
+    const characters: any[] = [];
     const nodeTasks: CharacterTask[] = [];
+
+    for (const [characterId, state] of this.states) {
+      if (state.nodeId === nodeId) {
+        characters.push({
+          characterId: state.characterId,
+          name: state.characterName,
+          profileStatus: state.profileStatus,
+          expressionStatus: state.expressionStatus,
+          threeViewStatus: state.threeViewStatus,
+          hasProfile: !!state.profile,
+          hasExpression: !!state.expressionSheet,
+          hasThreeView: !!state.threeViewSheet
+        });
+      }
+    }
 
     for (const [taskId, task] of this.tasks) {
       if (task.nodeId === nodeId) {
@@ -550,15 +667,10 @@ class CharacterGenerationManager {
     }
 
     return {
-      characters: Array.from(nodeStates.entries()).map(([id, state]) => ({
-        id,
-        name: state.characterName,
-        profileStatus: state.profileStatus,
-        expressionStatus: state.expressionStatus,
-        threeViewStatus: state.threeViewStatus
-      })),
+      characters,
       tasks: nodeTasks,
-      queueLength: this.queue.length
+      queueLength: this.queue.length,
+      totalStates: this.states.size
     };
   }
 }

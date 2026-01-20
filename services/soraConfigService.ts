@@ -245,3 +245,22 @@ export function getSoraModelById(modelId: string): SoraModel | undefined {
   const models = getSoraModels();
   return models.find(m => m.id === modelId);
 }
+
+// Sora2 配置常量
+export const SORA2_ASPECT_RATIOS = [
+  { value: '16:9', label: '16:9 横屏' },
+  { value: '9:16', label: '9:16 竖屏' }
+] as const;
+
+export const SORA2_DURATIONS = [
+  { value: '5', label: '5秒' },
+  { value: '10', label: '10秒' },
+  { value: '15', label: '15秒' }
+] as const;
+
+// Sora2 默认配置
+export const DEFAULT_SORA2_CONFIG = {
+  aspect_ratio: '16:9' as const,
+  duration: '10' as const,
+  hd: true
+} as const;

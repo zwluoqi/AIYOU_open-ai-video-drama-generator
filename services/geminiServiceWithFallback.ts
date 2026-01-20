@@ -337,8 +337,7 @@ export {
   detectTextInImage,
   analyzeDrama,
   generateStylePreset,
-  getClient,
-  sendChatMessage
+  getClient
 } from './geminiService';
 
 // 导出类型

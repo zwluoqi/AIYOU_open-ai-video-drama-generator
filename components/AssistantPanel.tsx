@@ -1,7 +1,8 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { X, Eraser, Copy, CornerDownLeft, Loader2, Sparkles, Brain, PenLine, Wand2 } from 'lucide-react';
-import { sendChatMessage } from '../services/geminiService';
+import { getClient } from '../services/geminiService';
+import { getUserDefaultModel } from '../services/modelConfig';
 
 interface Message {
   role: 'user' | 'model';
@@ -166,29 +167,49 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
-    
+
     const userText = input;
-    setInput(''); 
-    
+    setInput('');
+
     const newMessages: Message[] = [...messages, { role: 'user', text: userText }];
     setMessages(newMessages);
     setIsLoading(true);
 
     try {
-        const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
-        
-        // Pass flags to the service
-        const responseText = await sendChatMessage(history, userText, { 
-            isThinkingMode, 
-            isStoryboard: isStoryboardActive,
-            isHelpMeWrite: isHelpMeWriteActive 
-        });
-        
-        setMessages(prev => [...prev, { role: 'model', text: responseText }]);
+      const ai = getClient();
+      const modelName = getUserDefaultModel('text');
+
+      // 根据模式选择系统提示
+      let systemInstruction = '你是一个AI创意助手，擅长提供创作建议和灵感。';
+      if (isStoryboardActive) {
+        systemInstruction = '你是一个专业的分镜设计师，擅长将文字描述转化为分镜脚本。';
+      } else if (isHelpMeWriteActive) {
+        systemInstruction = '你是一个专业的写作助手，擅长帮助用户改进和优化文本。';
+      } else if (isThinkingMode) {
+        systemInstruction = '你是一个深思熟虑的分析助手，擅长深入分析问题。';
+      }
+
+      // 转换历史消息格式为 Gemini 格式
+      const history = messages.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.text }]
+      }));
+
+      // 创建聊天会话
+      const chat = ai.chats.create({
+        model: modelName,
+        config: { systemInstruction },
+        history
+      });
+
+      const result = await chat.sendMessage({ message: userText });
+      const responseText = result.response.text() || "抱歉，我没有收到回复。";
+
+      setMessages(prev => [...prev, { role: 'model', text: responseText }]);
     } catch (error: any) {
-        setMessages(prev => [...prev, { role: 'model', text: error.message || "连接错误，请稍后重试。" }]);
+      setMessages(prev => [...prev, { role: 'model', text: error.message || "连接错误，请稍后重试。" }]);
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 

@@ -208,6 +208,123 @@ app.get('/api/oss-upload-url', async (req, res) => {
 });
 
 /**
+ * Sora 2 API 代理 - 提交视频生成任务
+ * POST /api/sora/generations
+ */
+app.post('/api/sora/generations', async (req, res) => {
+  try {
+    const { prompt, images, aspect_ratio, duration, hd, watermark, private: isPrivate } = req.body;
+
+    // 从请求头获取 API Key
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少 API Key，请在请求头中提供 X-API-Key'
+      });
+    }
+
+    const requestBody = {
+      prompt: prompt || '',
+      model: 'sora-2',
+      images: images || [],
+      aspect_ratio: aspect_ratio || '16:9',
+      duration: duration || '5',
+      hd: hd !== undefined ? hd : true,
+      watermark: watermark !== undefined ? watermark : true,
+      private: isPrivate !== undefined ? isPrivate : true
+    };
+
+    console.log('📹 Sora API 代理: 提交视频生成任务', {
+      promptLength: prompt?.length,
+      hasImages: !!images?.length,
+      aspect_ratio,
+      duration,
+      requestBody: JSON.stringify(requestBody)
+    });
+
+    const response = await fetch('https://hk-api.gptbest.vip/v2/videos/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const data = await response.json();
+
+    console.log('📹 Sora API 响应:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      console.error('❌ Sora API 错误:', response.status, data);
+      return res.status(response.status).json({
+        success: false,
+        error: data.message || data.error || 'Sora API 请求失败',
+        details: data
+      });
+    }
+
+    console.log('✅ Sora API 代理: 任务提交成功', data.id || data.task_id || 'NO_ID');
+    res.json(data);
+
+  } catch (error) {
+    console.error('❌ Sora API 代理错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Sora API 代理请求失败'
+    });
+  }
+});
+
+/**
+ * Sora 2 API 代理 - 查询任务状态
+ * GET /api/sora/generations/:taskId
+ */
+app.get('/api/sora/generations/:taskId', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    // 从请求头获取 API Key
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少 API Key，请在请求头中提供 X-API-Key'
+      });
+    }
+
+    const response = await fetch(`https://hk-api.gptbest.vip/v2/videos/generations/${taskId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('❌ Sora API 查询错误:', response.status, data);
+      return res.status(response.status).json({
+        success: false,
+        error: data.message || data.error || 'Sora API 查询失败',
+        details: data
+      });
+    }
+
+    res.json(data);
+
+  } catch (error) {
+    console.error('❌ Sora API 代理查询错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Sora API 代理查询失败'
+    });
+  }
+});
+
+/**
  * 错误处理
  */
 app.use((err, req, res, next) => {

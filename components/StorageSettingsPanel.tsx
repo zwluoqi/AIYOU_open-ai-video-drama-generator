@@ -1,6 +1,6 @@
 /**
  * 存储设置面板组件
- * 用于配置本地文件存储
+ * 用于配置本地文件存储和云存储
  */
 
 import React, { useState, useEffect } from 'react';
@@ -16,6 +16,9 @@ import {
   ExternalLink,
   X,
   Loader2,
+  Eye,
+  EyeOff,
+  HelpCircle,
 } from 'lucide-react';
 import {
   FileStorageService,
@@ -23,6 +26,9 @@ import {
   StorageConfig,
   StorageStats,
 } from '../services/storage/index';
+import { getOSSConfig, saveOSSConfig } from '../services/soraConfigService';
+import { testOSSConnection } from '../services/ossService';
+import { OSSConfig } from '../types';
 
 interface StorageSettingsPanelProps {
   // 获取当前工作区ID的回调
@@ -53,6 +59,22 @@ export const StorageSettingsPanel: React.FC<StorageSettingsPanelProps> = ({
   const [isSupported, setIsSupported] = useState(true);
   const [showBrowserInfo, setShowBrowserInfo] = useState(false);
 
+  // OSS 配置 state
+  const [ossConfig, setOssConfig] = useState<OSSConfig>({
+    provider: 'imgbb',
+    imgbbApiKey: '',
+    imgbbExpiration: 86400,
+    bucket: '',
+    region: '',
+    accessKey: '',
+    secretKey: ''
+  });
+  const [ossTestState, setOssTestState] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [ossTestMessage, setOssTestMessage] = useState('');
+  const [ossTestUrl, setOssTestUrl] = useState('');
+  const [imageLoadError, setImageLoadError] = useState(false);
+  const [showOssApiKey, setShowOssApiKey] = useState(false);
+
   // 初始化
   useEffect(() => {
     // 检查浏览器支持
@@ -60,6 +82,7 @@ export const StorageSettingsPanel: React.FC<StorageSettingsPanelProps> = ({
 
     // 加载配置
     loadConfig();
+    loadOSSConfig();
 
     // 如果已启用，加载统计信息
     if (storageService.isEnabled()) {
@@ -173,6 +196,48 @@ export const StorageSettingsPanel: React.FC<StorageSettingsPanelProps> = ({
       alert(`数据迁移失败: ${error.message}`);
     } finally {
       setIsMigrating(false);
+    }
+  };
+
+  // 加载 OSS 配置
+  const loadOSSConfig = () => {
+    const saved = getOSSConfig();
+    if (saved) {
+      setOssConfig(saved);
+    }
+  };
+
+  // 保存 OSS 配置
+  const handleSaveOSSConfig = () => {
+    saveOSSConfig(ossConfig);
+    alert('OSS 配置已保存');
+  };
+
+  // 测试 OSS 连接
+  const handleTestOSS = async () => {
+    setOssTestState('testing');
+    setOssTestMessage('');
+    setOssTestUrl('');
+    setImageLoadError(false);
+
+    try {
+      const result = await testOSSConnection(ossConfig, (message) => {
+        setOssTestMessage(message);
+      });
+
+      if (result.success) {
+        setOssTestState('success');
+        setOssTestMessage('OSS 连接测试成功！图片已上传');
+        if (result.url) {
+          setOssTestUrl(result.url);
+        }
+      } else {
+        setOssTestState('error');
+        setOssTestMessage(result.error || '测试失败');
+      }
+    } catch (error: any) {
+      setOssTestState('error');
+      setOssTestMessage(`测试失败: ${error.message}`);
     }
   };
 
@@ -417,6 +482,230 @@ export const StorageSettingsPanel: React.FC<StorageSettingsPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* OSS 云存储配置 */}
+      <div className="p-5 bg-white/5 border border-white/10 rounded-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Cloud size={16} className="text-cyan-400" />
+              OSS 云存储配置
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              配置云存储服务，用于 Sora 2 图生视频时上传参考图片
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-xs text-slate-400">服务提供商</label>
+            <select
+              value={ossConfig.provider}
+              onChange={(e) => setOssConfig({ ...ossConfig, provider: e.target.value as 'imgbb' | 'tencent' | 'aliyun' })}
+              className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500/50"
+            >
+              <option value="imgbb">ImgBB (免费图床)</option>
+              <option value="tencent">腾讯云 COS</option>
+              <option value="aliyun">阿里云 OSS</option>
+            </select>
+          </div>
+
+          {/* ImgBB 配置 */}
+          {ossConfig.provider === 'imgbb' && (
+            <>
+              <div className="col-span-2 space-y-2">
+                <label className="text-xs text-slate-400 flex items-center justify-between">
+                  <span>API Key</span>
+                  <a
+                    href="https://api.imgbb.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-green-400 hover:text-green-300 text-[10px] flex items-center gap-1"
+                  >
+                    📝 获取 API Key
+                    <ExternalLink size={10} />
+                  </a>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showOssApiKey ? 'text' : 'password'}
+                    value={ossConfig.imgbbApiKey || ''}
+                    onChange={(e) => setOssConfig({ ...ossConfig, imgbbApiKey: e.target.value })}
+                    placeholder="输入 ImgBB API Key"
+                    className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50"
+                  />
+                  <button
+                    onClick={() => setShowOssApiKey(!showOssApiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                  >
+                    {showOssApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="col-span-2 space-y-2">
+                <label className="text-xs text-slate-400">删除时间</label>
+                <select
+                  value={ossConfig.imgbbExpiration || 86400}
+                  onChange={(e) => setOssConfig({ ...ossConfig, imgbbExpiration: parseInt(e.target.value) })}
+                  className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-green-500/50"
+                >
+                  <option value="600">10 分钟</option>
+                  <option value="3600">1 小时</option>
+                  <option value="86400">24 小时</option>
+                  <option value="604800">7 天</option>
+                  <option value="2592000">30 天</option>
+                  <option value="0">永久</option>
+                </select>
+                <p className="text-[9px] text-slate-500">素材将在指定时间后自动删除</p>
+              </div>
+            </>
+          )}
+
+          {/* 腾讯云/阿里云 配置 */}
+          {ossConfig.provider !== 'imgbb' && (
+            <>
+              <div className="space-y-2">
+                <label className="text-xs text-slate-400">Bucket 名称</label>
+                <input
+                  type="text"
+                  value={ossConfig.bucket || ''}
+                  onChange={(e) => setOssConfig({ ...ossConfig, bucket: e.target.value })}
+                  placeholder="my-bucket"
+                  className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-slate-400">区域</label>
+                <input
+                  type="text"
+                  value={ossConfig.region || ''}
+                  onChange={(e) => setOssConfig({ ...ossConfig, region: e.target.value })}
+                  placeholder="ap-guangzhou"
+                  className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-slate-400">Access Key</label>
+                <input
+                  type="password"
+                  value={ossConfig.accessKey || ''}
+                  onChange={(e) => setOssConfig({ ...ossConfig, accessKey: e.target.value })}
+                  placeholder="输入 Access Key"
+                  className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50"
+                />
+              </div>
+
+              <div className="col-span-2 space-y-2">
+                <label className="text-xs text-slate-400">Secret Key</label>
+                <input
+                  type="password"
+                  value={ossConfig.secretKey || ''}
+                  onChange={(e) => setOssConfig({ ...ossConfig, secretKey: e.target.value })}
+                  placeholder="输入 Secret Key"
+                  className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 操作按钮 */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleTestOSS}
+            disabled={ossTestState === 'testing'}
+            className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+              ossTestState === 'testing'
+                ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                : ossTestState === 'success'
+                ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                : ossTestState === 'error'
+                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+            }`}
+          >
+            {ossTestState === 'testing' ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                <span>测试中...</span>
+              </>
+            ) : ossTestState === 'success' ? (
+              <>
+                <CheckCircle size={14} />
+                <span>测试成功</span>
+              </>
+            ) : ossTestState === 'error' ? (
+              <>
+                <AlertCircle size={14} />
+                <span>重新测试</span>
+              </>
+            ) : (
+              <>
+                <Cloud size={14} />
+                <span>测试连接</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleSaveOSSConfig}
+            className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-all"
+          >
+            保存配置
+          </button>
+        </div>
+
+        {/* 测试结果 */}
+        {ossTestMessage && (
+          <div className={`p-3 rounded-lg text-xs ${
+            ossTestState === 'success'
+              ? 'bg-green-500/10 text-green-400'
+              : 'bg-red-500/10 text-red-400'
+          }`}>
+            <div className="flex items-start gap-2">
+              {ossTestState === 'success' ? (
+                <CheckCircle size={14} className="shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1">
+                <p>{ossTestMessage}</p>
+                {ossTestState === 'success' && ossTestUrl && (
+                  <div className="mt-3 space-y-2">
+                    <a
+                      href={ossTestUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-blue-400 hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink size={10} />
+                      {imageLoadError ? '图片链接（无法预览）' : '查看上传的测试图片'}
+                    </a>
+                    <div className="w-20 h-20 rounded-lg overflow-hidden border border-white/10 bg-white/5 flex items-center justify-center">
+                      {imageLoadError ? (
+                        <div className="text-center p-2">
+                          <AlertCircle size={14} className="text-yellow-400 mx-auto mb-1" />
+                          <p className="text-[8px] text-slate-400">无法预览</p>
+                        </div>
+                      ) : (
+                        <img
+                          src={ossTestUrl}
+                          alt="OSS Test"
+                          className="w-full h-full object-cover"
+                          onError={() => setImageLoadError(true)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 危险操作区 */}
       {config.enabled && (

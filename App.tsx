@@ -819,6 +819,14 @@ export const App = () => {
   useEffect(() => { window.addEventListener('mousemove', handleGlobalMouseMove); window.addEventListener('mouseup', handleGlobalMouseUp); return () => { window.removeEventListener('mousemove', handleGlobalMouseMove); window.removeEventListener('mouseup', handleGlobalMouseUp); }; }, [handleGlobalMouseMove, handleGlobalMouseUp]);
 
   const handleNodeUpdate = useCallback((id: string, data: any, size?: any, title?: string) => {
+      const callingStack = new Error().stack?.split('\n').slice(1, 4).join('\n');
+      console.log('[handleNodeUpdate] Called:', {
+          nodeId: id,
+          dataKeys: Object.keys(data),
+          hasGeneratedCharacters: !!data.generatedCharacters,
+          callingStack
+      });
+
       setNodes(prev => prev.map(n => {
           if (n.id === id) {
               const updated = { ...n, data: { ...n.data, ...data }, title: title || n.title };
@@ -830,6 +838,7 @@ export const App = () => {
                       count: data.generatedCharacters.length,
                       characters: data.generatedCharacters.map((c: any) => ({
                           name: c.name,
+                          status: c.status,
                           hasExpression: !!c.expressionSheet,
                           hasThreeView: !!c.threeViewSheet
                       }))
@@ -867,7 +876,7 @@ export const App = () => {
       if (style === 'ANIME') {
           base = 'Anime style, Japanese 2D animation, vibrant colors, Studio Ghibli style, clean lines, high detail, 8k resolution, cel shaded, flat color, expressive characters.';
       } else if (style === '3D') {
-          base = '3D animated character, high precision 3D modeling, stylized 3D render, PBR shading, subsurface scattering, ambient occlusion, delicate skin texture, flowing fabric clothing, individual hair strands, soft realistic lighting, 3D anime aesthetics, 3D animation quality, vibrant colors.';
+          base = 'Xianxia 3D animation character, semi-realistic style, Xianxia animation aesthetics, high precision 3D modeling, PBR shading with soft translucency, subsurface scattering, ambient occlusion, delicate and smooth skin texture (not overly realistic), flowing fabric clothing, individual hair strands, soft ethereal lighting, cinematic rim lighting with cool blue tones, otherworldly gaze, elegant and cold demeanor, 3D animation quality, vibrant colors.';
       } else {
           // Default to REAL
           base = 'Cinematic, Photorealistic, 8k, raw photo, hyperrealistic, movie still, live action, cinematic lighting, Arri Alexa, depth of field, film grain, color graded.';
@@ -1256,6 +1265,11 @@ export const App = () => {
                             to: childNodeId
                         };
 
+                        // 添加到历史记录
+                        if (result.videoUrl) {
+                            handleAssetGenerated('video', result.videoUrl, `Sora 任务组 ${taskGroup.taskNumber}`);
+                        }
+
                         // Update task group with results
                         updatedTaskGroups[taskGroupIndex] = {
                             ...taskGroup,
@@ -1286,13 +1300,43 @@ export const App = () => {
 
                   } catch (error: any) {
                     console.error('[SORA_VIDEO_GENERATOR] Failed to generate video:', error);
+                    const errorMessage = error.message || '生成失败';
+
+                    // 更新任务组状态
                     updatedTaskGroups[taskGroupIndex] = {
                         ...taskGroup,
                         generationStatus: 'failed' as const,
-                        error: error.message || '生成失败'
+                        error: errorMessage
                     };
+
+                    // 创建失败状态的子节点
+                    const childNodeId = `n-sora-child-${Date.now()}`;
+                    const childNode: AppNode = {
+                        id: childNodeId,
+                        type: NodeType.SORA_VIDEO_CHILD,
+                        x: node.x + (node.width || 420) + 50,
+                        y: node.y + (taskGroupIndex * 150),
+                        title: `任务组 ${taskGroup.taskNumber}`,
+                        status: NodeStatus.ERROR,
+                        data: {
+                            taskGroupId: taskGroup.id,
+                            taskNumber: taskGroup.taskNumber,
+                            soraPrompt: taskGroup.soraPrompt,
+                            videoUrl: undefined,
+                            error: errorMessage
+                        },
+                        inputs: [node.id]
+                    };
+
+                    const newConnection: Connection = {
+                        from: node.id,
+                        to: childNodeId
+                    };
+
+                    setNodes(prev => [...prev.filter(n => n.id !== childNodeId), childNode]);
+                    setConnections(prev => [...prev.filter(c => c.to !== childNodeId), newConnection]);
                     handleNodeUpdate(id, { taskGroups: updatedTaskGroups });
-                    setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.ERROR, data: { ...n.data, error: error.message } } : n));
+                    setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.ERROR } : n));
                   }
                   return;
               }
@@ -1378,6 +1422,15 @@ export const App = () => {
                       taskGroupsToGenerate,
                       (index, message, progress) => {
                           console.log(`[SORA_VIDEO_GENERATOR] Task ${index + 1}/${taskGroupsToGenerate.length}: ${message} (${progress}%)`);
+                          // 实时更新进度到节点状态
+                          const tg = taskGroupsToGenerate[index];
+                          if (tg) {
+                              handleNodeUpdate(id, {
+                                  taskGroups: nodesRef.current.find(n => n.id === id)?.data.taskGroups?.map(t =>
+                                      t.id === tg.id ? { ...t, progress } : t
+                                  )
+                              });
+                          }
                       },
                       { nodeId: id, nodeType: node.type }
                   );
@@ -1517,7 +1570,8 @@ export const App = () => {
                       const newConnections: Connection[] = [];
 
                       results.forEach((result, index) => {
-                          if (result.status === 'completed') {
+                          // 只有当状态完成且有有效videoUrl时才创建子节点
+                          if (result.status === 'completed' && result.videoUrl) {
                               const childNodeId = `n-sora-child-${Date.now()}-${index}`;
                               const taskGroup = updatedTaskGroups[index];
 
@@ -1680,7 +1734,8 @@ export const App = () => {
                   nodeId: id,
                   hasExtractedNames: !!node.data.extractedCharacterNames,
                   nameCount: node.data.extractedCharacterNames?.length || 0,
-                  inputCount: node.inputs.length
+                  inputCount: node.inputs.length,
+                  existingGeneratedCount: node.data.generatedCharacters?.length || 0
               });
 
               // For character name extraction: Use ONLY direct inputs (not recursive)
@@ -1777,6 +1832,12 @@ export const App = () => {
                   const existingChar = newGeneratedChars.find(c => c.name === name);
                   if (existingChar && (existingChar.status === 'SUCCESS' || existingChar.isGeneratingExpression || existingChar.isGeneratingThreeView)) {
                       console.log('[CHARACTER_NODE] Skipping character:', name, 'status:', existingChar.status);
+                      continue;
+                  }
+
+                  // Skip if character exists and is in IDLE state (waiting for manual trigger)
+                  if (existingChar && existingChar.status === 'IDLE') {
+                      console.log('[CHARACTER_NODE] Skipping IDLE character (waiting for manual trigger):', name);
                       continue;
                   }
 
@@ -2222,7 +2283,7 @@ export const App = () => {
                   const stylePrompt = node.data.storyboardStyle === 'ANIME'
                       ? 'Anime style, Japanese animation, Studio Ghibli style, 2D, Cel shaded, vibrant colors.'
                       : node.data.storyboardStyle === '3D'
-                      ? '3D animated character, high precision 3D modeling, stylized 3D render, PBR shading, subsurface scattering, ambient occlusion, delicate skin texture, flowing fabric clothing, individual hair strands, soft realistic lighting, 3D anime aesthetics, 3D animation quality.'
+                      ? 'Xianxia 3D animation character, semi-realistic style, Xianxia animation aesthetics, high precision 3D modeling, PBR shading with soft translucency, subsurface scattering, ambient occlusion, delicate and smooth skin texture (not overly realistic), flowing fabric clothing, individual hair strands, soft ethereal lighting, cinematic rim lighting with cool blue tones, otherworldly gaze, elegant and cold demeanor, 3D animation quality, vibrant colors.'
                       : 'Cinematic Movie Still, Photorealistic, 8k, Live Action, highly detailed.';
 
                   const visualPrompt = `
@@ -2773,6 +2834,11 @@ COMPOSITION REQUIREMENTS:
                   // Save to local storage
                   await saveStoryboardGridOutput(id, generatedGrids, 'STORYBOARD_IMAGE');
 
+                  // 添加到历史记录
+                  generatedGrids.forEach((gridUrl, index) => {
+                      handleAssetGenerated('image', gridUrl, `分镜图 第${index + 1}页`);
+                  });
+
                   console.log('[STORYBOARD_IMAGE] All data saved successfully');
               }
 
@@ -2797,14 +2863,12 @@ COMPOSITION REQUIREMENTS:
                   throw new Error('未找到任何分镜数据，请确保拆解节点包含分镜');
               }
 
-              // 2. Get model configuration
-              const modelId = node.data.soraModelId || 'sora-2-10s-large';
-              const model = getSoraModelById(modelId);
-              if (!model) {
-                  throw new Error(`未找到模型: ${modelId}`);
-              }
+              const { DEFAULT_SORA2_CONFIG } = await import('./services/soraConfigService');
+              // 2. Get Sora2 configuration from node
+              const sora2Config = node.data.sora2Config || DEFAULT_SORA2_CONFIG;
+              const maxDuration = parseInt(sora2Config.duration); // 5, 10, or 15
 
-              // 3. Group shots into task groups based on model duration
+              // 3. Group shots into task groups based on selected duration
               const taskGroups: SoraTaskGroup[] = [];
               let currentGroup: any = {
                   id: `tg-${Date.now()}-${taskGroups.length}`,
@@ -2812,7 +2876,7 @@ COMPOSITION REQUIREMENTS:
                   totalDuration: 0,
                   shotIds: [] as string[],
                   splitShots: [] as any[],
-                  soraModelId: modelId,
+                  sora2Config: { ...sora2Config },
                   soraPrompt: '',
                   promptGenerated: false,
                   imageFused: false,
@@ -2822,8 +2886,8 @@ COMPOSITION REQUIREMENTS:
               allSplitShots.forEach(shot => {
                   const shotDuration = shot.duration || 0;
 
-                  // Check if adding this shot would exceed the model duration
-                  if (currentGroup.totalDuration + shotDuration > model.duration && currentGroup.shotIds.length > 0) {
+                  // Check if adding this shot would exceed the max duration
+                  if (currentGroup.totalDuration + shotDuration > maxDuration && currentGroup.shotIds.length > 0) {
                       // Finalize current group and start a new one
                       taskGroups.push({ ...currentGroup });
                       currentGroup = {
@@ -2832,7 +2896,7 @@ COMPOSITION REQUIREMENTS:
                           totalDuration: 0,
                           shotIds: [],
                           splitShots: [],
-                          soraModelId: modelId,
+                          sora2Config: { ...sora2Config },
                           soraPrompt: '',
                           promptGenerated: false,
                           imageFused: false,
@@ -2853,7 +2917,9 @@ COMPOSITION REQUIREMENTS:
 
               console.log('[SORA_VIDEO_GENERATOR] Created task groups:', {
                   totalGroups: taskGroups.length,
-                  modelDuration: model.duration,
+                  maxDuration: maxDuration,
+                  aspectRatio: sora2Config.aspect_ratio,
+                  hd: sora2Config.hd,
                   shotsPerGroup: taskGroups.map(tg => tg.shotIds.length)
               });
 
@@ -2866,6 +2932,8 @@ COMPOSITION REQUIREMENTS:
                     console.log(`[SORA_VIDEO_GENERATOR] Generating professional prompt for task group ${tg.taskNumber}...`);
                     tg.soraPrompt = await buildProfessionalSoraPrompt(tg.splitShots);
                     tg.promptGenerated = true;
+                    // 初始化 Sora2 配置
+                    tg.sora2Config = { ...DEFAULT_SORA2_CONFIG };
                     tg.generationStatus = 'prompt_ready';
                     console.log(`[SORA_VIDEO_GENERATOR] Prompt generated for task group ${tg.taskNumber}`);
                   } catch (error) {
@@ -2874,14 +2942,15 @@ COMPOSITION REQUIREMENTS:
                     const { buildSoraStoryPrompt } = await import('./services/soraService');
                     tg.soraPrompt = buildSoraStoryPrompt(tg.splitShots);
                     tg.promptGenerated = true;
+                    // 初始化 Sora2 配置
+                    tg.sora2Config = { ...DEFAULT_SORA2_CONFIG };
                     tg.generationStatus = 'prompt_ready';
                   }
               }
 
               // Save task groups to node data
               handleNodeUpdate(id, {
-                  taskGroups: taskGroups,
-                  soraModelId: modelId
+                  taskGroups: taskGroups
               });
 
               console.log('[SORA_VIDEO_GENERATOR] Task groups created successfully');

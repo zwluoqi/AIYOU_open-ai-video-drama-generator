@@ -270,14 +270,14 @@ const CHARACTER_PROFILE_INSTRUCTION = `
 3. "appearancePrompt" 字段必须包含具体的视觉风格关键词，并且描述清晰，可以直接用于文生图模型。
 
 **3D动画风格特别要求（当 Visual Style 为 3D 时）：**
-- 必须使用：high precision 3D modeling, 3D animated character, stylized 3D render, PBR shading
-- 皮肤质感：delicate skin texture, subsurface scattering, 保留皮肤细节体现3D质感
+- 核心风格：Xianxia 3D animation character, semi-realistic style, Xianxia animation aesthetics
+- 必须使用：high precision 3D modeling, PBR shading with soft translucency
+- 皮肤质感：delicate and smooth skin texture (not overly realistic), subsurface scattering，追求通透柔滑质感
 - 服饰细节：flowing fabric clothing, 纱质服饰的飘逸感
 - 发丝细节：individual hair strands, 发丝根根分明
-- 光影效果：soft realistic lighting, ambient occlusion
-- 着色风格：PBR shading, stylized rendering
-- 严格禁止：2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D
-- 强调：3D anime aesthetics, stylized features, vibrant colors, artistic style, 高精度3D建模的立体感
+- 光影效果：soft ethereal lighting, cinematic rim lighting with cool blue tones, ambient occlusion
+- 角色气质：otherworldly gaze, elegant and cold demeanor，强化出尘气质
+- 严格禁止：2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D, overly photorealistic, hyper-realistic skin, photorealistic rendering
 
 4. 如果上下文没有提供足够信息，请根据角色定位进行合理的**AI自动补全**，使其丰满。
 `;
@@ -303,14 +303,14 @@ const SUPPORTING_CHARACTER_INSTRUCTION = `
 4. 配角不需要详细的性格、动机、关系等信息。
 
 **3D动画风格特别要求（当 Visual Style 为 3D 时）：**
-- 必须使用：high precision 3D modeling, 3D animated character, stylized 3D render, PBR shading
-- 皮肤质感：delicate skin texture, subsurface scattering, 保留皮肤细节体现3D质感
+- 核心风格：Xianxia 3D animation character, semi-realistic style, Xianxia animation aesthetics
+- 必须使用：high precision 3D modeling, PBR shading with soft translucency
+- 皮肤质感：delicate and smooth skin texture (not overly realistic), subsurface scattering，追求通透柔滑质感
 - 服饰细节：flowing fabric clothing, 纱质服饰的飘逸感
 - 发丝细节：individual hair strands, 发丝根根分明
-- 光影效果：soft realistic lighting, ambient occlusion
-- 着色风格：PBR shading, stylized rendering
-- 严格禁止：2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D
-- 强调：3D anime aesthetics, stylized features, vibrant colors, artistic style, 高精度3D建模的立体感
+- 光影效果：soft ethereal lighting, cinematic rim lighting with cool blue tones, ambient occlusion
+- 角色气质：otherworldly gaze, elegant and cold demeanor，强化出尘气质
+- 严格禁止：2D illustration, hand-drawn, anime 2D, flat shading, cel shading, toon shading, cartoon 2D, overly photorealistic, hyper-realistic skin, photorealistic rendering
 `;
 
 const DRAMA_ANALYZER_INSTRUCTION = `
@@ -337,30 +337,6 @@ const DRAMA_ANALYZER_INSTRUCTION = `
 3. 分析必须具体、深入，避免空泛的套话。
 4. 每个维度的分析应该包含具体案例和可操作的建议。
 5. 输出必须是纯 JSON 格式，不要包含 markdown 标记（如 \`\`\`json）。
-`;
-
-// ... (Other Instructions UNCHANGED) ...
-const SYSTEM_INSTRUCTION = `
-You are AIYOU, an expert multimedia creative assistant.
-Your goal is to assist users in generating images, videos, audio, and scripts.
-Always be concise, professional, and helpful.
-When the user asks for creative ideas, provide vivid, detailed descriptions suitable for generative AI prompts.
-`;
-
-const STORYBOARD_INSTRUCTION = `
-You are a professional film director and cinematographer.
-Your task is to break down a user's prompt into a sequence of detailed shots (storyboard).
-Output strictly valid JSON array of strings. No markdown.
-Each string should be a highly detailed image generation prompt for one shot.
-Example: ["Wide shot of a cyberpunk city...", "Close up of a neon sign..."]
-`;
-
-const HELP_ME_WRITE_INSTRUCTION = `
-You are a professional writing assistant.
-Your task is to help the user write, edit, or improve their text.
-Maintain a professional and helpful tone.
-If the user provides a draft, suggest improvements for clarity, coherence, and impact.
-If the user provides a topic, generate a well-structured draft.
 `;
 
 const VIDEO_ORCHESTRATOR_INSTRUCTION = `
@@ -727,44 +703,6 @@ const DETAILED_STORYBOARD_INSTRUCTION = `
 
 // --- API Functions ---
 
-export const sendChatMessage = async (
-    history: { role: 'user' | 'model', parts: { text: string }[] }[],
-    newMessage: string,
-    options?: { isThinkingMode?: boolean, isStoryboard?: boolean, isHelpMeWrite?: boolean },
-    context?: { nodeId?: string; nodeType?: string }
-): Promise<string> => {
-    return logAPICall(
-        'sendChatMessage',
-        async () => {
-            const ai = getClient();
-
-            const modelName = getUserDefaultModel('text');
-            let systemInstruction = SYSTEM_INSTRUCTION;
-
-            if (options?.isStoryboard) {
-                systemInstruction = STORYBOARD_INSTRUCTION;
-            } else if (options?.isHelpMeWrite) {
-                systemInstruction = HELP_ME_WRITE_INSTRUCTION;
-            }
-
-            const chat = ai.chats.create({
-                model: modelName,
-                config: { systemInstruction },
-                history: history
-            });
-
-            const result = await chat.sendMessage({ message: newMessage });
-            return result.text || "No response";
-        },
-        {
-            model: getUserDefaultModel('text'),
-            message: newMessage.substring(0, 200) + (newMessage.length > 200 ? '...' : ''),
-            options,
-            historyLength: history.length
-        },
-        context
-    );
-};
 
 // ... (generateImageFromText, generateVideo, analyzeVideo, editImageWithText, planStoryboard, generateScriptPlanner, generateScriptEpisodes, generateCinematicStoryboard UNCHANGED) ...
 export const generateImageFromText = async (
@@ -2255,7 +2193,7 @@ const CHARACTER_STYLE_INSTRUCTION = `你是一位Prompt工程专家，专门生�
 1. **核心风格标签**：
    - REAL: photorealistic portrait, realistic human
    - ANIME: anime character, anime style
-   - 3D: 3d animated character, stylized 3d render
+   - 3D: photorealistic 3D CG character
 
 2. **渲染质量**：
    - REAL: 8k uhd, professional portrait photography, high resolution
@@ -2265,7 +2203,7 @@ const CHARACTER_STYLE_INSTRUCTION = `你是一位Prompt工程专家，专门生�
 3. **人物绘制质量**（抽象）：
    - REAL: detailed facial features, realistic skin texture, professional lighting
    - ANIME: beautiful detailed eyes, detailed character design, clean linework
-   - 3D: smooth stylized skin, clean character design, 3D anime aesthetics, stylized features
+   - 3D: smooth realistic skin, clean character design, realistic features
 
 4. **画面质感**：
    - REAL: shallow depth of field, bokeh background, natural colors

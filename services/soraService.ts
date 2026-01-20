@@ -3,14 +3,15 @@
  * 封装 Sora 2 文/图生视频 API 调用
  */
 
-import { SoraTaskGroup, SplitStoryboardShot } from '../types';
-import { getSoraApiKey, getSoraModelById, getOSSConfig } from './soraConfigService';
+import { SoraTaskGroup, SplitStoryboardShot, Sora2UserConfig } from '../types';
+import { getSoraApiKey, getSoraModelById, getOSSConfig, DEFAULT_SORA2_CONFIG } from './soraConfigService';
 import { getUserDefaultModel } from './modelConfig';
 import { logAPICall } from './apiLogger';
 import { uploadFileToOSS } from './ossService';
 
 export interface SoraSubmitResult {
   id: string;
+  task_id?: string;  // 支持新 API 的字段名
   object: string;
   model: string;
   status: string;
@@ -49,117 +50,33 @@ Scene: ${scene}`;
  * 使用 AI 生成增强的 Sora 2 提示词
  * 包含镜头、运镜、拍摄视角等专业影视术语
  */
-export async function buildEnhancedSoraPrompt(shots: SplitStoryboardShot[]): Promise<string> {
-  // 构建提示词，让AI添加影视专业术语
-  const shotDescriptions = shots.map((shot, index) => {
-    return `镜头 ${shot.shotNumber}:
-- 时长: ${shot.duration}秒
-- 景别: ${shot.shotSize}
-- 角度: ${shot.cameraAngle}
-- 运镜: ${shot.cameraMovement}
-- 场景描述: ${shot.visualDescription}
-- 对话/音效: ${shot.dialogue || '无'}
-- 视觉特效: ${shot.visualEffects || '无'}`;
-  }).join('\n\n');
 
-  const systemPrompt = `你是一位专业的影视导演和视频制作专家。请根据提供的分镜信息，生成适合 Sora 2 AI 视频生成的专业提示词。
+/**
+ * 从 API 响应中提取任务 ID（兼容多种格式）
+ */
+function extractTaskId(result: any): string {
+  // 直接的 id 字段
+  if (result.id) return result.id;
+  // task_id 字段
+  if (result.task_id) return result.task_id;
+  // 嵌套在 data 中
+  if (result.data?.id) return result.data.id;
+  if (result.data?.task_id) return result.data.task_id;
+  // 嵌套在 result 中
+  if (result.result?.id) return result.result.id;
+  if (result.result?.task_id) return result.result.task_id;
 
-要求：
-1. 保留原始场景描述的核心内容
-2. 添加专业影视术语（但不改变原意）：
-   - 景别（大远景、远景、全景、中景、中近景、近景、特写、大特写）
-   - 运镜方式（固定、横移、俯仰、横摇、升降、轨道推拉、变焦推拉、正跟随、倒跟随、环绕、滑轨横移）
-   - 拍摄角度（视平、高位俯拍、低位仰拍、斜拍、越肩、鸟瞰）
-   - 灯光氛围（自然光、侧光、逆光、柔光等）
-   - 转场效果（淡入淡出、交叉溶解、硬切等）
-3. 格式化为 Sora 2 story mode，每个镜头包含 duration 和 Scene
-4. Scene 中融合：画面描述 + 镜头语言 + 氛围描述
-5. 适当添加细节使画面更生动，但不要大幅改变原意
-
-输出格式示例：
-Shot 1:
-duration: 3.0sec
-Scene: [特写镜头] 人物面部表情细腻，使用柔光照明营造温暖氛围，缓慢推镜头突出情感
-
-Shot 2:
-duration: 4.0sec
-Scene: [中景跟拍] 人物在街道行走，手持摄影机跟随，背景虚化营造景深效果，侧光增强立体感
-
-请直接输出优化后的提示词，不要添加任何前缀、后缀或说明文字。`;
-
-  const userPrompt = `以下是需要优化的分镜信息：
-
-${shotDescriptions}
-
-请按照要求生成适合 Sora 2 的优化提示词。`;
-
-  try {
-    // 调用 Gemini API
-    const { generateText } = await import('./geminiService');
-    const enhancedPrompt = await generateText(
-      systemPrompt + '\n\n' + userPrompt,
-      getUserDefaultModel('text')
-    );
-
-    // 清理 AI 回复，去掉不应该出现的前缀和后缀
-    let cleanedPrompt = enhancedPrompt.trim();
-
-    // 去掉常见的前缀
-    const prefixesToRemove = [
-      '好的，',
-      '好的。',
-      '以下是',
-      '这是',
-      '根据要求',
-      '为你生成',
-      '优化后的',
-      '这是优化后的',
-      '以下是优化后的',
-      '好的，以下是',
-      '好的，这是',
-      'Sure,',
-      'Here is',
-      'Certainly,',
-      'I will',
-      'Let me'
-    ];
-
-    for (const prefix of prefixesToRemove) {
-      if (cleanedPrompt.startsWith(prefix)) {
-        cleanedPrompt = cleanedPrompt.substring(prefix.length).trim();
-      }
-    }
-
-    // 确保以 "Shot 1:" 开头（如果是分镜模式）
-    if (!cleanedPrompt.startsWith('Shot 1:')) {
-      // 尝试找到第一个 "Shot 1:" 的位置
-      const shot1Index = cleanedPrompt.indexOf('Shot 1:');
-      if (shot1Index !== -1) {
-        cleanedPrompt = cleanedPrompt.substring(shot1Index).trim();
-      }
-    }
-
-    // 去掉 markdown 代码块标记
-    cleanedPrompt = cleanedPrompt.replace(/```\w*\n?/g, '').trim();
-
-    console.log('[Sora Service] Cleaned prompt, length:', cleanedPrompt.length);
-
-    return cleanedPrompt;
-  } catch (error) {
-    console.error('[Sora Service] AI prompt enhancement failed, using basic prompt:', error);
-    // 如果 AI 生成失败，回退到基础提示词
-    return buildSoraStoryPrompt(shots);
-  }
+  throw new Error('无法从 API 响应中提取任务 ID: ' + JSON.stringify(result));
 }
 
 /**
  * 提交 Sora 2 视频生成任务
+ * 使用新的 /v2/videos/generations 接口
  */
 export async function submitSoraTask(
   soraPrompt: string,
-  modelId: string,
   referenceImageUrl?: string,
-  isStoryMode: boolean = true,
+  sora2Config?: { aspect_ratio: '16:9' | '9:16'; duration: '5' | '10' | '15'; hd: boolean },
   context?: { nodeId?: string; nodeType?: string }
 ): Promise<SoraSubmitResult> {
   const apiKey = getSoraApiKey();
@@ -167,26 +84,29 @@ export async function submitSoraTask(
     throw new Error('请先在设置中配置 Sora 2 API Key');
   }
 
-  const model = getSoraModelById(modelId);
-  if (!model) {
-    throw new Error(`未找到模型: ${modelId}`);
-  }
+  // 使用 Sora2 配置或默认值
+  const config = sora2Config || DEFAULT_SORA2_CONFIG;
 
   const requestBody = {
     prompt: soraPrompt,
-    model: modelId,
-    size: apiKey,
-    input_reference: referenceImageUrl,
-    is_story: isStoryMode ? '1' : undefined
+    model: 'sora-2',
+    images: referenceImageUrl ? [referenceImageUrl] : [],
+    aspect_ratio: config.aspect_ratio,
+    duration: config.duration,
+    hd: config.hd,
+    watermark: true,
+    private: true
   };
 
   return logAPICall(
     'submitSoraTask',
     async () => {
-      const response = await fetch('https://ai.yijiarj.cn/v1/videos', {
+      // 使用本地代理服务器绕过 CORS
+      const apiUrl = 'http://localhost:3001/api/sora/generations';
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'X-API-Key': apiKey,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(requestBody)
@@ -198,13 +118,23 @@ export async function submitSoraTask(
       }
 
       const result: SoraSubmitResult = await response.json();
+
+      // 验证并提取任务 ID
+      const taskId = extractTaskId(result);
+      console.log('[Sora Service] 提交成功，任务 ID:', taskId);
+
+      // 确保 id 字段存在
+      if (!result.id) {
+        result.id = taskId;
+      }
+
       return result;
     },
     {
-      model: model.name,
-      duration: model.duration,
+      aspectRatio: config.aspect_ratio,
+      duration: config.duration,
+      hd: config.hd,
       hasReferenceImage: !!referenceImageUrl,
-      isStoryMode,
       promptLength: soraPrompt.length,
       promptPreview: soraPrompt.substring(0, 200) + (soraPrompt.length > 200 ? '...' : '')
     },
@@ -214,6 +144,7 @@ export async function submitSoraTask(
 
 /**
  * 查询 Sora 任务进度
+ * 使用新的 /v2/videos/generations/{task_id} 接口
  */
 export async function checkSoraTaskStatus(
   taskId: string,
@@ -228,10 +159,12 @@ export async function checkSoraTaskStatus(
   return logAPICall(
     'checkSoraTaskStatus',
     async () => {
-      const response = await fetch(`https://ai.yijiarj.cn/v1/videos/${taskId}`, {
+      // 使用本地代理服务器绕过 CORS
+      const apiUrl = `http://localhost:3001/api/sora/generations/${taskId}`;
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'X-API-Key': apiKey,
           'Content-Type': 'application/json'
         }
       });
@@ -242,6 +175,24 @@ export async function checkSoraTaskStatus(
       }
 
       const data: any = await response.json();
+
+      // 添加详细日志
+      const progressNum = parseInt(String(data.progress)) || 0;
+      console.log('[Sora Service] API Response:', {
+        taskId,
+        status: data.status,
+        progress: data.progress,
+        progressNum: progressNum,
+        hasOutput: !!data.output,
+        hasUrl: !!data.url,
+        hasVideoUrl: !!data.video_url,
+        // 打印所有可能的视频 URL 字段
+        allFields: Object.keys(data),
+        urlField: data.url,
+        videoUrlField: data.video_url,
+        outputUrl: data.output?.url,
+        rawData: JSON.stringify(data).substring(0, 800)
+      });
 
       // 更新进度
       if (onProgress && data.progress !== undefined) {
@@ -267,17 +218,20 @@ export async function checkSoraTaskStatus(
         };
       }
 
-      // 正常状态处理
+      // 正常状态处理 - 支持多种可能的响应格式
       return {
-        taskId: data.id,
+        taskId: data.id || data.task_id,
         status: data.status,
-        progress: data.progress || 0,
-        videoUrl: data.url,
-        videoUrlWatermarked: data.size,
-        duration: data.seconds,
+        progress: progressNum,
+        // 新 API: data.output 包含视频 URL
+        videoUrl: data.data?.output || data.output?.url || data.output || data.url || data.video_url || data.result?.url || data.video?.url,
+        videoUrlWatermarked: data.data?.watermark_output || data.output?.watermark_url || data.watermark_url || data.watermarked_url || data.watermark?.url,
+        duration: data.data?.duration || data.output?.duration || data.seconds || data.duration || data.video?.duration,
         quality: data.quality || 'standard',
         isCompliant: isCompliant,
-        violationReason: violationReason
+        violationReason: violationReason,
+        // 保存原始数据以便调试
+        _rawData: data
       };
     },
     {
@@ -298,25 +252,79 @@ export async function pollSoraTaskUntilComplete(
   context?: { nodeId?: string; nodeType?: string }
 ): Promise<SoraVideoResult> {
   let attempts = 0;
-  const maxAttempts = 120; // 最多轮询 120 次（10分钟）
+  const maxAttempts = 240; // 增加到 240 次（20分钟）
 
   while (attempts < maxAttempts) {
     const result = await checkSoraTaskStatus(taskId, onProgress, context);
 
-    if (result.status === 'completed' || result.status === 'error') {
+    console.log('[Sora Service] Polling result:', {
+      attempt: attempts + 1,
+      taskId,
+      status: result.status,
+      progress: result.progress,
+      hasVideoUrl: !!result.videoUrl
+    });
+
+    // 支持多种完成状态
+    const isCompleted = result.status === 'completed' ||
+                       result.status === 'succeeded' ||
+                       result.status === 'success' ||
+                       result.status === 'SUCCESS' ||  // 支持大写
+                       result.status === 'done' ||
+                       result.status === 'finished';
+
+    const isError = result.status === 'error' ||
+                    result.status === 'failed' ||
+                    result.status === 'failure' ||
+                    result.status === 'FAILED';  // 支持大写
+
+    // 将进度转换为数字进行比较
+    const progressNum = parseInt(String(result.progress)) || 0;
+
+    // 当进度达到 100% 或状态为完成时，返回结果
+    if (isCompleted || progressNum >= 100) {
       console.log('[Sora Service] Task completed:', {
         taskId,
         status: result.status,
+        videoUrl: result.videoUrl,
         isCompliant: result.isCompliant
       });
-      return result;
+
+      // 如果没有 videoUrl，检查其他可能的字段
+      if (!result.videoUrl) {
+        console.warn('[Sora Service] No videoUrl found, raw result:', result);
+        // 尝试从原始数据中查找
+        if (result._rawData) {
+          console.log('[Sora Service] Raw data keys:', Object.keys(result._rawData));
+          console.log('[Sora Service] Raw data:', JSON.stringify(result._rawData, null, 2));
+        }
+      }
+
+      return { ...result, status: 'completed' as const };
+    }
+
+    if (isError) {
+      console.log('[Sora Service] Task error:', {
+        taskId,
+        status: result.status,
+        violationReason: result.violationReason
+      });
+      return { ...result, status: 'error' as const };
     }
 
     attempts++;
-    console.log(`[Sora Service] Polling attempt ${attempts}/${maxAttempts}, progress: ${result.progress}%`);
 
     // 等待后重试
     await new Promise(resolve => setTimeout(resolve, pollingInterval));
+  }
+
+  // 超时前最后尝试一次查询
+  console.log('[Sora Service] Max attempts reached, doing final check...');
+  const finalResult = await checkSoraTaskStatus(taskId, undefined, context);
+  console.log('[Sora Service] Final check result:', finalResult);
+
+  if (finalResult.videoUrl || finalResult.status === 'completed') {
+    return { ...finalResult, status: 'completed' as const };
   }
 
   throw new Error('任务超时，请稍后手动查看结果');
@@ -365,13 +373,20 @@ export async function generateSoraVideo(
 
       const submitResult = await submitSoraTask(
         taskGroup.soraPrompt,
-        taskGroup.soraModelId || 'sora-2-yijia',
         referenceImageUrl,
-        true,
+        taskGroup.sora2Config,
         context
       );
 
+      console.log('[Sora Service] submitResult:', JSON.stringify(submitResult));
+
       taskGroup.soraTaskId = submitResult.id;
+
+      if (!taskGroup.soraTaskId) {
+        throw new Error('提交任务后未返回有效的任务 ID');
+      }
+
+      console.log('[Sora Service] 任务 ID 已设置:', taskGroup.soraTaskId);
       taskGroup.generationStatus = 'generating';
     }
 

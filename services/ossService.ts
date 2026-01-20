@@ -196,6 +196,82 @@ async function uploadToAliyunOSS(
 }
 
 /**
+ * 将 Blob 转换为 Base64 格式
+ */
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      // 移除 data:image/xxx;base64, 前缀，只保留 base64 数据
+      const base64 = dataUrl.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * 上传文件到 ImgBB
+ * 免费图床服务，无需后端代理
+ */
+async function uploadToImgBB(
+  file: Blob,
+  fileName: string,
+  config: OSSConfig
+): Promise<string> {
+  // 优先使用 imgbbApiKey，兼容使用 accessKey
+  const apiKey = config.imgbbApiKey || config.accessKey;
+  if (!apiKey) {
+    throw new Error('请配置 ImgBB API Key');
+  }
+
+  console.log('[uploadToImgBB] 上传文件:', {
+    fileName,
+    blobType: file.type,
+    blobSize: file.size
+  });
+
+  // 转换为 base64
+  const base64 = await blobToBase64(file);
+
+  // 构建 FormData
+  const formData = new FormData();
+  formData.append('key', apiKey);
+  formData.append('image', base64);
+  formData.append('name', fileName);
+
+  // 可选：设置过期时间
+  if (config.imgbbExpiration && config.imgbbExpiration > 0) {
+    formData.append('expiration', config.imgbbExpiration.toString());
+  }
+
+  try {
+    const response = await fetch('https://api.imgbb.com/1/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(`ImgBB API 返回错误: ${result.status || '未知错误'}`);
+    }
+
+    const imageUrl = result.data?.url;
+    if (!imageUrl) {
+      throw new Error('ImgBB API 未返回图片 URL');
+    }
+
+    console.log('[uploadToImgBB] 上传成功:', imageUrl);
+    return imageUrl;
+  } catch (error: any) {
+    throw new Error(`ImgBB 上传失败: ${error.message}`);
+  }
+}
+
+/**
  * HMAC-SHA256 加密
  */
 async function hmacSha256Hex(message: string, key: string): Promise<string> {
@@ -393,11 +469,23 @@ export async function testOSSConnection(
   onProgress?: (message: string) => void
 ): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
-    if (!config.bucket || !config.region || !config.accessKey || !config.secretKey) {
-      return {
-        success: false,
-        error: '请填写完整的 OSS 配置信息'
-      };
+    // 根据提供商验证配置
+    if (config.provider === 'imgbb') {
+      const apiKey = config.imgbbApiKey || config.accessKey;
+      if (!apiKey) {
+        return {
+          success: false,
+          error: '请配置 ImgBB API Key'
+        };
+      }
+    } else {
+      // 腾讯云/阿里云需要完整配置
+      if (!config.bucket || !config.region || !config.accessKey || !config.secretKey) {
+        return {
+          success: false,
+          error: '请填写完整的 OSS 配置信息'
+        };
+      }
     }
 
     onProgress?.('生成测试图片...');
@@ -410,7 +498,9 @@ export async function testOSSConnection(
     onProgress?.('上传到云存储...');
     let uploadedUrl: string;
 
-    if (config.provider === 'tencent') {
+    if (config.provider === 'imgbb') {
+      uploadedUrl = await uploadToImgBB(testImage, fileName, config);
+    } else if (config.provider === 'tencent') {
       uploadedUrl = await uploadToTencentCOS(testImage, fileName, config);
     } else {
       uploadedUrl = await uploadToAliyunOSS(testImage, fileName, config);
@@ -475,7 +565,8 @@ export async function uploadFileToOSS(
 
   // 🔧 如果是图片格式，转换为PNG以确保Sora API兼容性
   // 解决WebP等格式被拒绝的问题
-  if (isImageBlob(blob)) {
+  // 注意：ImgBB 不需要PNG转换，它支持多种格式
+  if (isImageBlob(blob) && config.provider !== 'imgbb') {
     try {
       console.log('[OSS Service] 检测到图片格式:', blob.type, '→ 转换为PNG');
       blob = await convertImageToPNG(blob);
@@ -487,7 +578,10 @@ export async function uploadFileToOSS(
     }
   }
 
-  if (config.provider === 'tencent') {
+  // 根据提供商选择上传方式
+  if (config.provider === 'imgbb') {
+    return await uploadToImgBB(blob, fileName, config);
+  } else if (config.provider === 'tencent') {
     return await uploadToTencentCOS(blob, fileName, config);
   } else {
     return await uploadToAliyunOSS(blob, fileName, config);
