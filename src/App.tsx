@@ -224,6 +224,11 @@ export const App = () => {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [contextMenuTarget, setContextMenuTarget] = useState<any>(null);
   const [expandedMedia, setExpandedMedia] = useState<any>(null);
+
+  // 将scale存储到window对象，供Node组件使用（用于底部操作栏反向缩放）
+  useEffect(() => {
+    (window as any).__canvasScale = scale;
+  }, [scale]);
   const [croppingNodeId, setCroppingNodeId] = useState<string | null>(null);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
 

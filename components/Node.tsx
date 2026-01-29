@@ -8,6 +8,7 @@ import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
 import { IMAGE_MODELS, TEXT_MODELS, VIDEO_MODELS, AUDIO_MODELS } from '../services/modelConfig';
 import { promptManager } from '../services/promptManager';
 import { getNodeNameCN } from '../utils/nodeHelpers';
+import { getAllModelsConfig, getAllSubModelNames } from '../services/modelConfigLoader';
 
 const IMAGE_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
 const VIDEO_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
@@ -462,6 +463,12 @@ const NodeComponent: React.FC<NodeProps> = ({
   const [isActionProcessing, setIsActionProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const isActionDisabled = isWorking || isActionProcessing;
+
+  // 动态加载的模型配置（用于 STORYBOARD_VIDEO_GENERATOR）
+  const [dynamicSubModels, setDynamicSubModels] = useState<Record<string, Record<string, string[]>>>({});
+  const [dynamicSubModelNames, setDynamicSubModelNames] = useState<Record<string, string>>({});
+  const [configLoaded, setConfigLoaded] = useState(false);
+
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | HTMLAudioElement | null>(null);
   const isHoveringRef = useRef(false);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
@@ -505,6 +512,30 @@ const NodeComponent: React.FC<NodeProps> = ({
 
   useEffect(() => { setLocalPrompt(node.data.prompt || ''); }, [node.data.prompt]);
   const commitPrompt = () => { if (localPrompt !== (node.data.prompt || '')) onUpdate(node.id, { prompt: localPrompt }); };
+
+  // 加载后台模型配置（用于 STORYBOARD_VIDEO_GENERATOR）
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const [subModels, subModelNames] = await Promise.all([
+          getAllModelsConfig(),
+          getAllSubModelNames()
+        ]);
+        setDynamicSubModels(subModels);
+        setDynamicSubModelNames(subModelNames);
+        setConfigLoaded(true);
+        console.log('[Node] ✅ Model config loaded from backend');
+      } catch (error) {
+        console.error('[Node] ❌ Failed to load model config:', error);
+        setConfigLoaded(true); // 失败也标记为已加载，会回退到默认值
+      }
+    };
+
+    // 只在 STORYBOARD_VIDEO_GENERATOR 节点加载配置
+    if (node.type === NodeType.STORYBOARD_VIDEO_GENERATOR) {
+      loadConfig();
+    }
+  }, [node.type]);
 
   // 🔥 关键修复：从 node.data 恢复角色数据到 manager（刷新后需要）
   useEffect(() => {
@@ -3605,7 +3636,14 @@ const NodeComponent: React.FC<NodeProps> = ({
          return null;
      }
 
-     const isOpen = (isHovered || isInputFocused);
+     // STORYBOARD_VIDEO_GENERATOR 在 prompting 状态下始终显示底部操作栏
+     const isAlwaysOpen = node.type === NodeType.STORYBOARD_VIDEO_GENERATOR &&
+                            (node.data as any).status === 'prompting';
+     const isOpen = isAlwaysOpen || (isHovered || isInputFocused);
+
+     // 获取当前画布缩放比例，用于反向缩放底部操作栏以保持按钮可点击
+     const canvasScale = (window as any).__canvasScale || 1;
+     const inverseScale = canvasScale < 0.5 ? 1 / canvasScale : 1; // 只在缩放小于50%时才反向缩放
 
      // Special handling for DRAMA_ANALYZER
      if (node.type === NodeType.DRAMA_ANALYZER) {
@@ -3991,7 +4029,13 @@ const NodeComponent: React.FC<NodeProps> = ({
          const isLoading = data.isLoading;
 
          return (
-             <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
+             <div
+                 className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}
+                 style={{
+                     transform: `translateX(-50%) ${inverseScale !== 1 ? `scale(${inverseScale})` : ''}`,
+                     transformOrigin: 'top center'
+                 }}
+             >
                  <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
                      {/* Stage 1 (idle): 获取分镜按钮 */}
                      {status === 'idle' && (
@@ -4028,37 +4072,266 @@ const NodeComponent: React.FC<NodeProps> = ({
                          </div>
                      )}
 
-                     {/* Stage 3 (prompting): 操作按钮 */}
+                     {/* Stage 3 (prompting): 模型配置 + 操作按钮 */}
                      {status === 'prompting' && (
-                         <div className="flex gap-2">
-                             <button
-                                 onClick={(e) => {
-                                     e.stopPropagation();
-                                     onUpdate(node.id, {
-                                         status: 'selecting',
-                                         generatedPrompt: '',
-                                         promptModified: false
-                                     });
-                                 }}
-                                 disabled={isLoading}
-                                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-white/10"
-                             >
-                                 <ChevronDown size={14} className="rotate-90" />
-                                 <span>返回</span>
-                             </button>
+                         (() => {
+                             const selectedPlatform = data.selectedPlatform || 'yunwuapi';
+                             const selectedModel = data.selectedModel || 'luma';
+                             const modelConfig = data.modelConfig || {
+                                 aspect_ratio: '16:9',
+                                 duration: '5',
+                                 quality: 'standard'
+                             };
 
-                             <button
-                                 onClick={(e) => {
-                                     e.stopPropagation();
-                                     onAction?.(node.id, 'generate-video');
-                                 }}
-                                 disabled={isLoading}
-                                 className="flex-[2] flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-lg hover:shadow-purple-500/20 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                             >
-                                 {isLoading ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
-                                 <span>生成视频</span>
-                             </button>
-                         </div>
+                             const platforms = [
+                                 { code: 'yunwuapi', name: '云雾API', models: ['veo', 'luma', 'runway', 'minimax', 'volcengine', 'grok', 'qwen', 'sora'] }
+                             ];
+
+                             const modelNames: Record<string, string> = {
+                                 veo: 'Veo',
+                                 luma: 'Luma Dream Machine',
+                                 runway: 'Runway Gen-3',
+                                 minimax: '海螺',
+                                 volcengine: '豆包',
+                                 grok: 'Grok',
+                                 qwen: '通义万象',
+                                 sora: 'Sora'
+                             };
+
+                             // 默认子模型列表
+                             const defaultSubModels: Record<string, string[]> = {
+                                 veo: ['veo2', 'veo2-fast', 'veo3', 'veo3-fast', 'veo3-pro'],
+                                 luma: ['ray-v2', 'photon', 'photon-flash'],
+                                 sora: ['sora', 'sora-2'],
+                                 runway: ['gen3-alpha-turbo', 'gen3-alpha', 'gen3-alpha-extreme'],
+                                 minimax: ['video-01', 'video-01-live'],
+                                 volcengine: ['doubao-video-1', 'doubao-video-pro'],
+                                 grok: ['grok-2-video', 'grok-vision-video'],
+                                 qwen: ['qwen-video', 'qwen-video-plus']
+                             };
+
+                             const defaultSubModelDisplayNames: Record<string, string> = {
+                                 'veo2': 'Veo 2',
+                                 'veo2-fast': 'Veo 2 Fast',
+                                 'veo3': 'Veo 3',
+                                 'veo3-fast': 'Veo 3 Fast',
+                                 'veo3-pro': 'Veo 3 Pro',
+                                 'ray-v2': 'Ray V2',
+                                 'photon': 'Photon',
+                                 'photon-flash': 'Photon Flash',
+                                 'sora': 'Sora 1',
+                                 'sora-2': 'Sora 2',
+                                 'gen3-alpha-turbo': 'Gen-3 Alpha Turbo',
+                                 'gen3-alpha': 'Gen-3 Alpha',
+                                 'gen3-alpha-extreme': 'Gen-3 Alpha Extreme',
+                                 'video-01': 'Video-01',
+                                 'video-01-live': 'Video-01 Live',
+                                 'doubao-video-1': 'Doubao Video 1',
+                                 'doubao-video-pro': 'Doubao Video Pro',
+                                 'grok-2-video': 'Grok 2 Video',
+                                 'grok-vision-video': 'Grok Vision Video',
+                                 'qwen-video': 'Qwen Video',
+                                 'qwen-video-plus': 'Qwen Video Plus'
+                             };
+
+                             // 使用动态加载的配置（如果已加载），否则回退到硬编码的默认值
+                             // 动态配置结构: { yunwuapi: { veo: [...], luma: [...] } }
+                             // 默认配置结构: { veo: [...], luma: [...] }
+                             const subModels = configLoaded && Object.keys(dynamicSubModels).length > 0 && dynamicSubModels[selectedPlatform]
+                               ? dynamicSubModels[selectedPlatform]
+                               : defaultSubModels;
+
+                             const subModelDisplayNames = configLoaded && Object.keys(dynamicSubModelNames).length > 0
+                               ? { ...defaultSubModelDisplayNames, ...dynamicSubModelNames }
+                               : defaultSubModelDisplayNames;
+
+                             const selectedSubModel = data.subModel || (subModels[selectedModel]?.[0] || selectedModel);
+
+                             return (
+                                 <div className="flex flex-col gap-3">
+                                     {/* 模型配置 */}
+                                     <div className="flex flex-col gap-2">
+                                         <div className="flex items-center justify-between">
+                                             <div className="flex items-center gap-2">
+                                                 <Wand2 size={12} className="text-purple-400" />
+                                                 <span className="text-[10px] font-bold text-slate-400">模型配置</span>
+                                                 {configLoaded && Object.keys(dynamicSubModels).length > 0 && (
+                                                     <span className="text-[8px] text-green-400">● 后台</span>
+                                                 )}
+                                                 {!configLoaded && (
+                                                     <span className="text-[8px] text-yellow-400">● 加载中...</span>
+                                                 )}
+                                             </div>
+                                         </div>
+
+                                         {/* 快速模型显示 */}
+                                         <div className="flex items-center gap-2 px-2 py-1.5 bg-black/40 rounded-lg border border-white/10">
+                                             <Sparkles size={10} className="text-purple-400" />
+                                             <span className="text-[9px] text-slate-300">{modelNames[selectedModel]}</span>
+                                             {selectedSubModel && selectedSubModel !== selectedModel && (
+                                                 <>
+                                                     <span className="text-[8px] text-slate-500">·</span>
+                                                     <span className="text-[9px] text-slate-400">{subModelDisplayNames[selectedSubModel] || selectedSubModel}</span>
+                                                 </>
+                                             )}
+                                             <span className="text-[8px] text-slate-500">·</span>
+                                             <span className="text-[9px] text-slate-400">{modelConfig.aspect_ratio}</span>
+                                             <span className="text-[8px] text-slate-500">·</span>
+                                             <span className="text-[9px] text-slate-400">{modelConfig.duration}s</span>
+                                         </div>
+
+                                         {/* 平台 & 模型选择 */}
+                                         <div className="flex gap-2">
+                                             <select
+                                                 className="flex-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[9px] text-slate-200 focus:outline-none"
+                                                 value={selectedPlatform}
+                                                 onChange={(e) => onUpdate(node.id, { selectedPlatform: e.target.value })}
+                                                 onMouseDown={(e) => e.stopPropagation()}
+                                             >
+                                                 {platforms.map(p => (
+                                                     <option key={p.code} value={p.code}>{p.name}</option>
+                                                 ))}
+                                             </select>
+                                             <select
+                                                 className="flex-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[9px] text-slate-200 focus:outline-none"
+                                                 value={selectedModel}
+                                                 onChange={(e) => {
+                                                     const newModel = e.target.value;
+                                                     const firstSubModel = subModels[newModel]?.[0];
+                                                     onUpdate(node.id, {
+                                                         selectedModel: newModel,
+                                                         subModel: firstSubModel
+                                                     });
+                                                 }}
+                                                 onMouseDown={(e) => e.stopPropagation()}
+                                             >
+                                                 {platforms.find(p => p.code === selectedPlatform)?.models.map(m => (
+                                                     <option key={m} value={m}>{modelNames[m]}</option>
+                                                 ))}
+                                             </select>
+                                         </div>
+
+                                         {/* 子模型选择 */}
+                                         {subModels[selectedModel] && subModels[selectedModel].length > 0 && (
+                                             <select
+                                                 className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[9px] text-slate-200 focus:outline-none"
+                                                 value={selectedSubModel}
+                                                 onChange={(e) => onUpdate(node.id, { subModel: e.target.value })}
+                                                 onMouseDown={(e) => e.stopPropagation()}
+                                             >
+                                                 {subModels[selectedModel].map(subModel => (
+                                                     <option key={subModel} value={subModel}>
+                                                         {subModelDisplayNames[subModel] || subModel}
+                                                     </option>
+                                                 ))}
+                                             </select>
+                                         )}
+
+                                         {/* 宽高比 & 时长 */}
+                                         <div className="flex gap-2">
+                                             <div className="flex-1 flex gap-1">
+                                                 {['16:9', '9:16'].map(ratio => (
+                                                     <button
+                                                         key={ratio}
+                                                         onClick={(e) => {
+                                                             e.stopPropagation();
+                                                             onUpdate(node.id, {
+                                                                 modelConfig: { ...modelConfig, aspect_ratio: ratio }
+                                                             });
+                                                         }}
+                                                         className={`flex-1 px-2 py-1 rounded-lg text-[9px] font-bold transition-all ${
+                                                             modelConfig.aspect_ratio === ratio
+                                                                 ? 'bg-purple-500 text-white'
+                                                                 : 'bg-black/60 text-slate-400 hover:bg-white/5'
+                                                         }`}
+                                                         onMouseDown={(e) => e.stopPropagation()}
+                                                     >
+                                                         {ratio}
+                                                     </button>
+                                                 ))}
+                                             </div>
+                                             <div className="flex-1 flex gap-1">
+                                                 {['5', '10', '15'].map(duration => (
+                                                     <button
+                                                         key={duration}
+                                                         onClick={(e) => {
+                                                             e.stopPropagation();
+                                                             onUpdate(node.id, {
+                                                                 modelConfig: { ...modelConfig, duration }
+                                                             });
+                                                         }}
+                                                         className={`flex-1 px-2 py-1 rounded-lg text-[9px] font-bold transition-all ${
+                                                             modelConfig.duration === duration
+                                                                 ? 'bg-purple-500 text-white'
+                                                                 : 'bg-black/60 text-slate-400 hover:bg-white/5'
+                                                         }`}
+                                                         onMouseDown={(e) => e.stopPropagation()}
+                                                     >
+                                                         {duration}s
+                                                     </button>
+                                                 ))}
+                                             </div>
+                                         </div>
+
+                                         {/* 画质选择 */}
+                                         <div className="flex gap-1">
+                                             {['standard', 'pro', 'hd'].map(quality => (
+                                                 <button
+                                                     key={quality}
+                                                     onClick={(e) => {
+                                                         e.stopPropagation();
+                                                         onUpdate(node.id, {
+                                                             modelConfig: { ...modelConfig, quality }
+                                                         });
+                                                     }}
+                                                     className={`flex-1 px-2 py-1 rounded-lg text-[9px] font-bold transition-all ${
+                                                         modelConfig.quality === quality
+                                                             ? 'bg-purple-500 text-white'
+                                                             : 'bg-black/60 text-slate-400 hover:bg-white/5'
+                                                     }`}
+                                                     onMouseDown={(e) => e.stopPropagation()}
+                                                 >
+                                                     {quality === 'standard' ? '标清' : quality === 'pro' ? '高清' : '超清'}
+                                                 </button>
+                                             ))}
+                                         </div>
+                                     </div>
+
+                                     {/* 操作按钮 */}
+                                     <div className="flex gap-2">
+                                         <button
+                                             onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 onUpdate(node.id, {
+                                                     status: 'selecting',
+                                                     generatedPrompt: '',
+                                                     promptModified: false
+                                                 });
+                                             }}
+                                             disabled={isLoading}
+                                             className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-white/10"
+                                             onMouseDown={(e) => e.stopPropagation()}
+                                         >
+                                             <ChevronDown size={14} className="rotate-90" />
+                                             <span>返回</span>
+                                         </button>
+
+                                         <button
+                                             onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 onAction?.(node.id, 'generate-video');
+                                             }}
+                                             disabled={isLoading}
+                                             className="flex-[2] flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-lg hover:shadow-purple-500/20 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                             onMouseDown={(e) => e.stopPropagation()}
+                                         >
+                                             {isLoading ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
+                                             <span>生成视频</span>
+                                         </button>
+                                     </div>
+                                 </div>
+                             );
+                         })()
                      )}
 
                      {/* Stage 4 (generating): 进度提示 */}

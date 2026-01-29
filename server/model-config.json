@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "updatedAt": "2026-01-28T10:45:06.992Z",
+  "updatedAt": "2026-01-29T03:21:05.788Z",
   "platforms": [
     {
       "id": "yunwuapi-platform",
@@ -21,22 +21,6 @@
           "useUnifiedEndpoint": true,
           "checkEndpoint": "/veo/status",
           "subModels": [
-            {
-              "id": "veo2",
-              "modelId": "veo-model",
-              "code": "veo2",
-              "name": "Veo 2",
-              "description": "Google Veo 2 模型",
-              "enabled": true
-            },
-            {
-              "id": "veo2-fast",
-              "modelId": "veo-model",
-              "code": "veo2-fast",
-              "name": "Veo 2 Fast",
-              "description": "快速版本",
-              "enabled": true
-            },
             {
               "id": "veo3",
               "modelId": "veo-model",
