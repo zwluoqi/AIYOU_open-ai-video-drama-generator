@@ -5,7 +5,7 @@
 
 import React, { useState, memo, useEffect } from 'react';
 import { AppNode, NodeType, SplitStoryboardShot } from '../types';
-import { Film, Play, Loader2, ChevronDown, Grid3X3, Copy, Check, Settings, Image as ImageIcon, Wand2, Sparkles, RefreshCw } from 'lucide-react';
+import { Film, Play, Loader2, ChevronDown, Grid3X3, Copy, Check, Settings, Image as ImageIcon, Wand2, Sparkles, RefreshCw, AlertCircle, Video as VideoIcon, Download } from 'lucide-react';
 import { getAllModelsConfig, getAllSubModelNames } from '../services/modelConfigLoader';
 
 interface StoryboardVideoNodeProps {
@@ -700,6 +700,7 @@ export const StoryboardVideoNode = memo(StoryboardVideoNodeComponent, (prevProps
     prevProps.node.data.status === nextProps.node.data.status &&
     prevProps.node.data.selectedShotIds?.length === nextProps.node.data.selectedShotIds?.length &&
     prevProps.node.data.generatedPrompt === nextProps.node.data.generatedPrompt &&
+    prevProps.node.data.fusedImage === nextProps.node.data.fusedImage &&
     prevProps.node.data.progress === nextProps.node.data.progress &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isDragging === nextProps.isDragging
@@ -707,30 +708,155 @@ export const StoryboardVideoNode = memo(StoryboardVideoNodeComponent, (prevProps
 });
 
 /**
- * 分镜视频子节点 UI - 显示视频 + 提示词（提示词默认收起）
+ * 分镜视频子节点 UI - 显示视频（样式与 SORA_VIDEO_CHILD 保持一致）
  */
 const StoryboardVideoChildNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
   node
 }) => {
   const data = node.data as any;
+  const videoUrl = data.videoUrl;
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [currentTime, setCurrentTime] = React.useState(0);
+  const [durationValue, setDurationValue] = React.useState(0);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const [videoError, setVideoError] = React.useState<string | null>(null);
+
+  // 格式化时间显示
+  const formatTime = (time: number) => {
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // 下载视频
+  const handleDownload = async () => {
+    if (!videoUrl) {
+      alert('视频 URL 不存在');
+      return;
+    }
+
+    try {
+      console.log('[视频下载] 开始下载视频');
+      alert('正在从原始地址下载，请稍候...');
+
+      const response = await fetch(videoUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `storyboard-video-${Date.now()}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      console.log('[视频下载] ✅ 下载完成');
+    } catch (e) {
+      console.error('[视频下载] ❌ 下载失败:', e);
+      alert(`视频下载失败: ${e.message}\n\n您也可以右键点击视频，选择"视频另存为"来下载。`);
+    }
+
+    setContextMenu(null);
+  };
 
   return (
-    <div className="flex flex-col h-full p-3">
+    <div className="w-full h-full flex flex-col bg-zinc-900 overflow-hidden relative">
       {/* Video Player */}
-      <div className="flex-1 flex flex-col gap-2">
-        {data.videoUrl ? (
+      {videoUrl ? (
+        <>
           <video
-            src={data.videoUrl}
-            controls
-            className="w-full flex-1 bg-black rounded-xl border border-white/10"
-            onMouseDown={(e) => e.stopPropagation()}
+            ref={(el) => {
+              if (el) {
+                videoRef.current = el;
+                el.onloadedmetadata = () => {
+                  setDurationValue(el.duration);
+                  setVideoError(null);
+                };
+                el.onerror = () => {
+                  console.error('[视频播放] 加载失败:', videoUrl);
+                  setVideoError('视频加载失败');
+                };
+              }
+            }}
+            src={videoUrl}
+            className="w-full h-full object-cover bg-zinc-900"
+            loop
+            playsInline
+            controls  // ✅ 使用原生视频控件（包含下载按钮）
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY });
+            }}
+            onClick={() => setContextMenu(null)}
+            onTimeUpdate={() => {
+              if (videoRef.current) {
+                setCurrentTime(videoRef.current.currentTime);
+              }
+            }}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => setIsPlaying(false)}
           />
-        ) : (
-          <div className="flex-1 flex items-center justify-center bg-black/40 rounded-xl border border-white/10">
-            <Loader2 className="animate-spin text-purple-400" size={24} />
-          </div>
-        )}
-      </div>
+
+          {/* 右键菜单 */}
+          {contextMenu && (
+            <div
+              className="fixed z-50 bg-zinc-800 border border-white/10 rounded-lg shadow-xl py-1 min-w-[200px]"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-3 py-2 text-xs text-white/50 border-b border-white/10 mb-1">
+                视频操作
+              </div>
+              <button
+                onClick={handleDownload}
+                className="w-full px-3 py-2 text-left text-xs text-white hover:bg-white/10 flex items-center gap-2 transition-colors"
+              >
+                <Download size={14} />
+                下载视频
+              </button>
+              <div className="border-t border-white/10 my-1"></div>
+              <button
+                onClick={() => setContextMenu(null)}
+                className="w-full px-3 py-2 text-left text-xs text-white/50 hover:bg-white/10 transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          )}
+
+          {/* 点击其他地方关闭菜单 */}
+          {contextMenu && (
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setContextMenu(null)}
+            />
+          )}
+        </>
+      ) : data.error ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-red-400 bg-black/40 p-6 text-center">
+          <AlertCircle className="text-red-500 mb-1" size={32} />
+          <span className="text-xs font-medium text-red-200">{data.error}</span>
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
+          <VideoIcon size={32} className="opacity-50" />
+          <span className="text-xs font-medium">等待视频生成</span>
+        </div>
+      )}
+
+      {/* Error overlay */}
+      {node.status === 'error' && !videoUrl && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+          <AlertCircle className="text-red-500 mb-2" />
+          <span className="text-xs text-red-200">{data.error}</span>
+        </div>
+      )}
     </div>
   );
 };
@@ -741,7 +867,9 @@ export const StoryboardVideoChildNode = memo(StoryboardVideoChildNodeComponent, 
   return (
     prevProps.node.id === nextProps.node.id &&
     prevProps.node.type === nextProps.node.type &&
+    prevProps.node.status === nextProps.node.status &&
     prevProps.node.data.videoUrl === nextProps.node.data.videoUrl &&
+    prevProps.node.data.error === nextProps.node.data.error &&
     prevProps.isSelected === nextProps.isSelected
   );
 });

@@ -24,6 +24,7 @@ import { handleCharacterAction as handleCharacterActionNew } from './services/ch
 import { getGenerationStrategy } from './services/videoStrategies';
 import { saveToStorage, loadFromStorage } from './services/storage_old';
 import { getUserPriority, ModelCategory, getDefaultModel, getUserDefaultModel } from './services/modelConfig';
+import { getGridConfig, STORYBOARD_RESOLUTIONS } from './services/storyboardConfig';
 import { saveImageNodeOutput, saveVideoNodeOutput, saveAudioNodeOutput, saveStoryboardGridOutput } from './utils/storageHelper';
 import { checkImageNodeCache, checkVideoNodeCache, checkAudioNodeCache } from './utils/cacheChecker';
 import { executeWithFallback } from './services/modelFallback';
@@ -1678,7 +1679,10 @@ export const App = () => {
                   try {
                     // Use AI to generate enhanced prompt
                     const { buildProfessionalSoraPrompt } = await import('./services/soraPromptBuilder');
-                    const newPrompt = await buildProfessionalSoraPrompt(taskGroup.splitShots);
+                    const newPrompt = await buildProfessionalSoraPrompt(taskGroup.splitShots, {
+                      includeBlackScreen: true,
+                      blackScreenDuration: 0.5
+                    });
 
                     // Update the task group's prompt
                     const updatedTaskGroups = [...taskGroups];
@@ -2443,7 +2447,7 @@ export const App = () => {
 
                   console.log('[STORYBOARD_VIDEO_GENERATOR] Calling AI with', selectedShots.length, 'shots');
 
-                  // Generate prompt using SORA2 format
+                  // Generate prompt using SORA2 format (no black screen for storyboard videos)
                   const generatedPrompt = await buildProfessionalSoraPrompt(selectedShots);
 
                   console.log('[STORYBOARD_VIDEO_GENERATOR] Generated prompt:', generatedPrompt);
@@ -3658,8 +3662,108 @@ export const App = () => {
               // Get grid configuration
               const gridType = node.data.storyboardGridType || '9';
               const panelOrientation = node.data.storyboardPanelOrientation || '16:9';
-              const shotsPerGrid = gridType === '9' ? 9 : 6;
-              const gridLayout = gridType === '9' ? '3x3' : '2x3';
+              const gridConfig = getGridConfig(gridType);
+              const shotsPerGrid = gridConfig.shotsPerGrid;
+              const gridLayout = gridConfig.gridLayout;
+
+              // Get resolution configuration
+              const resolution = node.data.storyboardResolution || '1k';
+              const resolutionConfig = STORYBOARD_RESOLUTIONS.find(r => r.quality === resolution) || STORYBOARD_RESOLUTIONS[0];
+
+              // 🔧 修复：计算网格行列（用于后续尺寸计算）
+              const cols = gridConfig.cols;
+              const rows = gridConfig.rows;
+
+              // 计算整体图片宽高比
+              let panelWidthUnits: number;
+              let panelHeightUnits: number;
+
+              if (panelOrientation === '16:9') {
+                  panelWidthUnits = 16;
+                  panelHeightUnits = 9;
+              } else {  // '9:16'
+                  panelWidthUnits = 9;
+                  panelHeightUnits = 16;
+              }
+
+              const totalWidthUnits = cols * panelWidthUnits;
+              const totalHeightUnits = rows * panelHeightUnits;
+
+              // 简化到最简
+              const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+              const divisor = gcd(totalWidthUnits, totalHeightUnits);
+              const simplifiedWidth = totalWidthUnits / divisor;
+              const simplifiedHeight = totalHeightUnits / divisor;
+              const calculatedRatio = `${simplifiedWidth}:${simplifiedHeight}`;
+
+              // 映射到 API 支持的比例
+              const supportedRatios = ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9', '9:21'];
+              const findClosestRatio = (targetRatio: string, supportedRatios: string[]): string => {
+                  const [targetW, targetH] = targetRatio.split(':').map(Number);
+                  const targetValue = targetW / targetH;
+
+                  let closestRatio = supportedRatios[0];
+                  let minDiff = Math.abs((supportedRatios[0].split(':').map(Number)[0] / supportedRatios[0].split(':').map(Number)[1]) - targetValue);
+
+                  for (const ratio of supportedRatios) {
+                      const [w, h] = ratio.split(':').map(Number);
+                      const diff = Math.abs((w / h) - targetValue);
+                      if (diff < minDiff) {
+                          minDiff = diff;
+                          closestRatio = ratio;
+                      }
+                  }
+                  return closestRatio;
+              };
+
+              const imageAspectRatio = findClosestRatio(calculatedRatio, supportedRatios);
+
+              // 🔧 修复：根据 imageAspectRatio 动态计算输出尺寸
+              // 保持分辨率级别的像素总数（约 2K = 5-6M 像素）
+              const targetMegapixels = resolutionConfig.width * resolutionConfig.height;  // 总像素数
+              const [ratioW, ratioH] = imageAspectRatio.split(':').map(Number);
+              const ratioValue = ratioW / ratioH;
+
+              // 计算符合宽高比的尺寸
+              let totalWidth: number;
+              let totalHeight: number;
+
+              if (ratioValue > 1) {
+                  // 横屏 (16:9, 4:3, 21:9)
+                  totalWidth = Math.sqrt(targetMegapixels * ratioValue);
+                  totalHeight = totalWidth / ratioValue;
+              } else if (ratioValue < 1) {
+                  // 竖屏 (9:16, 3:4, 9:21)
+                  totalHeight = Math.sqrt(targetMegapixels / ratioValue);
+                  totalWidth = totalHeight * ratioValue;
+              } else {
+                  // 正方形 (1:1)
+                  totalWidth = Math.sqrt(targetMegapixels);
+                  totalHeight = totalWidth;
+              }
+
+              // 取整为 8 的倍数（优化编码）
+              totalWidth = Math.round(totalWidth / 8) * 8;
+              totalHeight = Math.round(totalHeight / 8) * 8;
+
+              // 计算单个面板尺寸
+              const panelWidth = Math.floor(totalWidth / cols);
+              const panelHeight = Math.floor(totalHeight / rows);
+
+              console.log('[STORYBOARD_IMAGE] 动态尺寸计算:', {
+                  gridLayout: gridConfig.gridLayout,
+                  cols,
+                  rows,
+                  panelOrientation,
+                  imageAspectRatio,
+                  calculatedRatio,
+                  targetMegapixels: resolutionConfig.width * resolutionConfig.height,
+                  totalWidth,
+                  totalHeight,
+                  panelWidth,
+                  panelHeight,
+                  explanation: `根据 ${imageAspectRatio} 比例动态计算输出尺寸，保持 ${resolutionConfig.name} 分辨率级别的像素总数`
+              });
 
               // Calculate number of pages needed
               const numberOfPages = Math.ceil(extractedShots.length / shotsPerGrid);
@@ -3670,6 +3774,10 @@ export const App = () => {
                   numberOfPages,
                   gridLayout,
                   panelOrientation,
+                  resolution: resolutionConfig.quality,
+                  resolutionName: resolutionConfig.name,
+                  outputWidth: resolutionConfig.width,
+                  outputHeight: resolutionConfig.height,
                   isRegenerating
               });
 
@@ -3773,14 +3881,19 @@ export const App = () => {
                       });
                   }
 
+                  // 注意：totalWidth, totalHeight, panelWidth, panelHeight, imageAspectRatio 已在函数开头计算
+
                   // Build detailed panel descriptions with clear numbering and uniqueness
+                  // IMPORTANT: Use format that won't be rendered as text in images
                   const panelDescriptions = pageShots.map((shot, idx) => {
                       const globalIndex = startIdx + idx;
                       if (shot.isEmpty) {
-                          return `Panel ${idx + 1}: [BLANK] - Empty panel at end of storyboard`;
+                          return `[Panel ${idx + 1} is BLANK - Empty panel at end of storyboard]`;
                       }
                       const shotPrompt = buildDetailedShotPrompt(shot, idx, globalIndex);
-                      return `Panel ${idx + 1}: ${shotPrompt}`;
+                      // 🔧 优化：明确面板的方向和比例
+                      const panelOrientationText = panelOrientation === '16:9' ? '16:9 landscape (horizontal)' : '9:16 portrait (vertical)';
+                      return `[Panel ${idx + 1}]: ${panelOrientationText} - ${shotPrompt}`;
                   }).join('\n\n');
 
                   // Extract unique scenes and build scene consistency guide
@@ -3828,42 +3941,24 @@ This ensures visual continuity - multiple panels showing the same scene should l
 `;
                   }
 
-                  // Calculate correct output aspect ratio and resolution based on grid type
-                  let outputAspectRatio: string;
-                  let resolutionWidth: number;
-                  let resolutionHeight: number;
+                  // Build comprehensive prompt with configured resolution
+                  // 🔧 优化：计算方向关键词
+                  const [ratioW, ratioH] = imageAspectRatio.split(':').map(Number);
+                  const orientation = ratioW > ratioH ? 'landscape' : 'portrait';
 
-                  if (gridType === '9') {
-                      // 3x3 grid: standard 16:9 or 9:16
-                      outputAspectRatio = panelOrientation;
-                      if (panelOrientation === '16:9') {
-                          resolutionWidth = 3840;
-                          resolutionHeight = 2160;
-                      } else {
-                          resolutionWidth = 2160;
-                          resolutionHeight = 3840;
-                      }
-                  } else {
-                      // 2x3 or 3x2 grid: 4:3 or 3:4 (standard supported aspect ratios)
-                      if (panelOrientation === '16:9') {
-                          outputAspectRatio = '4:3';
-                          resolutionWidth = 3840;
-                          resolutionHeight = 2880;
-                      } else {
-                          outputAspectRatio = '3:4';
-                          resolutionWidth = 2880;
-                          resolutionHeight = 3840;
-                      }
-                  }
+                  // 🔧 优化：基于宽度计算基础分辨率
+                  const baseWidth = resolution === '1k' ? 1024 : resolution === '2k' ? 2048 : 4096;
 
-                  // Build comprehensive prompt with 2K resolution and subtle panel numbers
                   const gridPrompt = `
-Create a professional cinematic storyboard ${gridLayout} grid layout at 2K resolution.
+Create a professional cinematic storyboard ${gridLayout} grid layout at ${resolutionConfig.name} resolution.
+
+IMPORTANT: The panel descriptions below use [Panel X] format for organization ONLY. DO NOT render these labels, numbers, or brackets in the actual image. They are purely for your reference in organizing the layout.
 
 OVERALL IMAGE SPECS:
-- Output Aspect Ratio: ${outputAspectRatio} (${panelOrientation === '16:9' ? 'landscape' : 'portrait'})
-- Grid Layout: ${shotsPerGrid} panels arranged in ${gridLayout} formation
-- Each panel maintains ${panelOrientation} aspect ratio
+- Output Aspect Ratio: ${imageAspectRatio} (${orientation})
+- Grid Layout: ${shotsPerGrid} panels arranged in ${gridLayout} formation (${cols} columns × ${rows} rows)
+- Each panel: ${panelOrientation} aspect ratio (${panelOrientation === '16:9' ? 'landscape/horizontal' : 'portrait/vertical'})
+- CRITICAL: ALL panels must be ${orientation} orientation (${panelOrientation} aspect ratio)
 - Panel borders: EXACTLY 4 pixels wide black lines (NOT percentage-based, ABSOLUTE FIXED SIZE)
 - CRITICAL: All panel borders must be PERFECTLY UNIFORM - absolutely NO thickness variation allowed
 - Every dividing line must have EXACTLY the same 4-pixel width
@@ -3871,7 +3966,7 @@ OVERALL IMAGE SPECS:
 
 QUALITY STANDARDS:
 - Professional film industry storyboard quality
-- **2K HD resolution (2048 pixels wide base)**
+- **${resolutionConfig.name} HD resolution (${baseWidth} pixels wide base)**
 - High-detail illustration with sharp focus
 - Suitable for web and digital display
 - Crisp edges, no blurring or artifacts
@@ -3930,10 +4025,20 @@ COMPOSITION REQUIREMENTS:
 - Environmental details and props clearly visible
 `.trim();
 
-                  console.log(`[STORYBOARD_IMAGE] Generating page ${pageIndex + 1}/${numberOfPages}:`, {
+                  console.log(`[STORYBOARD_IMAGE] 🎯 优化后的提示词参数:`, {
                       shotRange: `${startIdx + 1}-${endIdx}`,
                       promptLength: gridPrompt.length,
-                      aspectRatio: outputAspectRatio,
+                      // 🔧 优化后的关键参数
+                      promptAspectRatio: `${imageAspectRatio} (${orientation})`,  // Prompt 中的描述
+                      apiAspectRatio: imageAspectRatio,  // API 参数
+                      baseWidth: baseWidth,  // 基础宽度
+                      // 实际计算的尺寸（仅供参考，不放入 Prompt）
+                      actualSize: `${totalWidth}x${totalHeight}`,
+                      panelSize: `${panelWidth}x${panelHeight}`,
+                      panelOrientation: panelOrientation,
+                      gridLayout: `${cols}x${rows}`,
+                      // 优化说明
+                      optimization: 'Prompt 使用比例+方向，避免与 API aspectRatio 参数冲突',
                       sceneGroups: Array.from(sceneGroups.entries()).map(([scene, data]) => ({
                           scene,
                           panelCount: data.indices.length,
@@ -3961,8 +4066,8 @@ COMPOSITION REQUIREMENTS:
                               primaryImageModel,
                               characterReferenceImages,
                               {
-                                  aspectRatio: outputAspectRatio,
-                                  resolution: "2K",
+                                  aspectRatio: imageAspectRatio, // 使用基于网格布局计算的整体图片比例
+                                  resolution: resolutionConfig.quality.toUpperCase(), // 使用配置的分辨率 (1K/2K/4K)
                                   count: 1
                               },
                               { nodeId: id, nodeType: node.type }
@@ -4174,7 +4279,10 @@ COMPOSITION REQUIREMENTS:
               for (const tg of taskGroups) {
                   try {
                     console.log(`[SORA_VIDEO_GENERATOR] Generating professional prompt for task group ${tg.taskNumber}...`);
-                    tg.soraPrompt = await buildProfessionalSoraPrompt(tg.splitShots);
+                    tg.soraPrompt = await buildProfessionalSoraPrompt(tg.splitShots, {
+                      includeBlackScreen: true,
+                      blackScreenDuration: 0.5
+                    });
                     tg.promptGenerated = true;
                     // 保留任务组创建时设置的 Sora2 配置（用户选择的时长）
                     if (!tg.sora2Config) {

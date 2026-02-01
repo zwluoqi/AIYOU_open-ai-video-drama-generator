@@ -3,7 +3,7 @@
  */
 
 // API 提供商类型
-export type SoraProviderType = 'sutu' | 'yunwu' | 'dayuapi' | 'kie';
+export type SoraProviderType = 'sutu' | 'yunwu' | 'dayuapi' | 'kie' | 'yijiapi';
 
 // 用户配置（UI 层面）- 与当前系统保持一致
 export interface Sora2UserConfig {
