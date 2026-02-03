@@ -841,14 +841,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                   onChange={(e) => setSoraProviderState(e.target.value as SoraProviderType)}
                   className="w-full px-4 py-2.5 bg-black/20 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-green-500/50"
                 >
-                  <option value="sutu">速推 API (Sutu)</option>
+                  <option value="sutu">速创 API (Sinco)</option>
                   <option value="yunwu">云雾 API (Yunwu)</option>
                   <option value="dayuapi">大洋芋 API (Dayuapi)</option>
                   <option value="kie">KIE AI API</option>
                   <option value="yijiapi">一加API (Yijia)</option>
                 </select>
                 <p className="text-[10px] text-slate-500">
-                  {soraProvider === 'sutu' ? '速推 API：原有接口，稳定性一般' :
+                  {soraProvider === 'sutu' ? '速创 API：支持 Sora2 标准版和 Pro 版，根据高清开关自动选择' :
                    soraProvider === 'yunwu' ? '云雾 API：新增接口，稳定性较好' :
                    soraProvider === 'dayuapi' ? '大洋芋 API：通过模型名称控制参数，支持 10/15/25 秒视频' :
                    soraProvider === 'kie' ? 'KIE AI API：支持图生视频和文生视频，参数通过 input 对象传递' :
@@ -856,11 +856,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                 </p>
               </div>
 
-              {/* 速推 API Key */}
+              {/* 速创 API Key */}
               {soraProvider === 'sutu' && (
                 <div className="space-y-3">
                   <label className="block">
-                    <span className="text-sm font-medium text-slate-300">速推 API Key</span>
+                    <span className="text-sm font-medium text-slate-300">速创 API Key</span>
                     <span className="text-red-500 ml-1">*</span>
                   </label>
                   <div className="flex gap-2">
@@ -869,7 +869,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                         type={showSoraApiKey ? 'text' : 'password'}
                         value={soraApiKey}
                         onChange={(e) => setSoraApiKey(e.target.value)}
-                        placeholder="输入速推 API Key"
+                        placeholder="输入速创 API Key"
                         className="w-full px-4 py-2.5 bg-black/20 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50"
                       />
                       <button
@@ -881,7 +881,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-500">
-                    从速推服务商获取 API Key
+                    从速创API (api.wuyinkeji.com) 获取 API Key
                   </p>
                 </div>
               )}
@@ -1068,9 +1068,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                   <div className="flex items-start gap-2">
                     <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1 flex-shrink-0" />
                     <div>
-                      <p className="font-medium text-white">速推 API (Sutu)</p>
+                      <p className="font-medium text-white">速创 API (Sinco)</p>
                       <p className="text-[10px] text-slate-400 mt-1">
-                        原有接口，稳定性一般，价格相对较低
+                        支持 Sora2 标准版（10/15秒）和 Pro 版（15/25秒高清），根据高清开关自动选择
                       </p>
                     </div>
                   </div>

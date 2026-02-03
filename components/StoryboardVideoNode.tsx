@@ -692,19 +692,49 @@ const StoryboardVideoNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
 
 // 使用 memo 优化性能
 export const StoryboardVideoNode = memo(StoryboardVideoNodeComponent, (prevProps, nextProps) => {
-  // 只在关键属性变化时重新渲染
-  return (
-    prevProps.node.id === nextProps.node.id &&
-    prevProps.node.type === nextProps.node.type &&
-    prevProps.node.status === nextProps.node.status &&
-    prevProps.node.data.status === nextProps.node.data.status &&
-    prevProps.node.data.selectedShotIds?.length === nextProps.node.data.selectedShotIds?.length &&
-    prevProps.node.data.generatedPrompt === nextProps.node.data.generatedPrompt &&
-    prevProps.node.data.fusedImage === nextProps.node.data.fusedImage &&
-    prevProps.node.data.progress === nextProps.node.data.progress &&
-    prevProps.isSelected === nextProps.isSelected &&
-    prevProps.isDragging === nextProps.isDragging
-  );
+  // 检查基本属性
+  if (prevProps.node.id !== nextProps.node.id) return false;
+  if (prevProps.node.type !== nextProps.node.type) return false;
+  if (prevProps.node.status !== nextProps.node.status) return false;
+  if (prevProps.isSelected !== nextProps.isSelected) return false;
+  if (prevProps.isDragging !== nextProps.isDragging) return false;
+
+  // 检查 data 对象的关键属性
+  const prevData = prevProps.node.data;
+  const nextData = nextProps.node.data;
+
+  if (prevData.status !== nextData.status) return false;
+  if (prevData.progress !== nextData.progress) return false;
+  if (prevData.isLoading !== nextData.isLoading) return false;
+  if (prevData.isLoadingFusion !== nextData.isLoadingFusion) return false;
+  if (prevData.generatedPrompt !== nextData.generatedPrompt) return false;
+  if (prevData.promptModified !== nextData.promptModified) return false;
+  if (prevData.fusedImage !== nextData.fusedImage) return false;
+  if (prevData.selectedPlatform !== nextData.selectedPlatform) return false;
+  if (prevData.selectedModel !== nextData.selectedModel) return false;
+  if (prevData.subModel !== nextData.subModel) return false;
+  if (prevData.enableImageFusion !== nextData.enableImageFusion) return false;
+
+  // 检查 selectedShotIds 数组内容（而不仅仅是长度）
+  const prevIds = prevData.selectedShotIds || [];
+  const nextIds = nextData.selectedShotIds || [];
+  if (prevIds.length !== nextIds.length) return false;
+  for (let i = 0; i < prevIds.length; i++) {
+    if (prevIds[i] !== nextIds[i]) return false;
+  }
+
+  // 检查 modelConfig 对象
+  const prevConfig = prevData.modelConfig;
+  const nextConfig = nextData.modelConfig;
+  if (!prevConfig !== !nextConfig) return false;
+  if (prevConfig && nextConfig) {
+    if (prevConfig.aspect_ratio !== nextConfig.aspect_ratio) return false;
+    if (prevConfig.duration !== nextConfig.duration) return false;
+    if (prevConfig.quality !== nextConfig.quality) return false;
+  }
+
+  // 所有检查都通过，返回 true 表示可以跳过重新渲染
+  return true;
 });
 
 /**

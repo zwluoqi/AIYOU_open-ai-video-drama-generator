@@ -1,7 +1,7 @@
 /**
  * Sora 2 API 服务
  * 封装 Sora 2 文/图生视频 API 调用
- * 支持多个 API 提供商（速推、云雾等）
+ * 支持多个 API 提供商（速创、云雾等）
  */
 
 import { SoraTaskGroup, SplitStoryboardShot, Sora2UserConfig } from '../types';
@@ -44,7 +44,7 @@ export async function submitSoraTask(
   const apiKey = getProviderApiKey();
 
   if (!apiKey) {
-    const providerDisplay = providerName === 'sutu' ? '速推' : '云雾';
+    const providerDisplay = providerName === 'sutu' ? '速创' : '云雾';
     throw new Error(`请先在设置中配置 ${providerDisplay} API Key`);
   }
 
@@ -95,7 +95,7 @@ export async function checkSoraTaskStatus(
   const apiKey = getProviderApiKey();
 
   if (!apiKey) {
-    const providerDisplay = providerName === 'sutu' ? '速推' : '云雾';
+    const providerDisplay = providerName === 'sutu' ? '速创' : '云雾';
     throw new Error(`请先在设置中配置 ${providerDisplay} API Key`);
   }
 
