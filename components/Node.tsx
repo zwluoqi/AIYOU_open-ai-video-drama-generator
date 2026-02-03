@@ -5020,7 +5020,10 @@ const NodeComponent: React.FC<NodeProps> = ({
                     // VIDEO EDITOR NODE
                     <>
                     {/* Content Area: Video Grid Display */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                    <div
+                        className="flex-1 overflow-y-auto custom-scrollbar p-2"
+                        onMouseEnter={handleMouseEnter}  // 鼠标在内容区时保持操作区显示
+                    >
                         {(() => {
                             // Get connected video nodes
                             const getConnectedVideos = () => {
