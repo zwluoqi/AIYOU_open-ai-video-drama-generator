@@ -296,6 +296,21 @@ export const NODE_DEPENDENCY_RULES: Record<NodeType, {
     minInputs: 1,
     maxInputs: 1,
     description: '显示单个分镜视频生成结果'
+  },
+
+  // 视频编辑器 - 接收多个视频节点,支持拼接和编辑
+  [NodeType.VIDEO_EDITOR]: {
+    allowedInputs: [
+      NodeType.VIDEO_GENERATOR,
+      NodeType.SORA_VIDEO_GENERATOR,
+      NodeType.STORYBOARD_VIDEO_GENERATOR,
+      NodeType.VIDEO_ANALYZER,
+      NodeType.VIDEO_EDITOR  // 支持链式编辑
+    ],
+    allowedOutputs: [],  // 暂不考虑输出
+    minInputs: 1,
+    maxInputs: -1,  // 不限制输入数量
+    description: '视频编辑器,拼接和编辑多个视频'
   }
 };
 

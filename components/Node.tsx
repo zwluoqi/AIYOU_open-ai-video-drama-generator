@@ -1,6 +1,6 @@
 
 import { AppNode, NodeStatus, NodeType, StoryboardShot, CharacterProfile } from '../types';
-import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles, ZoomIn, ZoomOut, Minus, Circle, Square, Maximize, Move, RotateCw, TrendingUp, TrendingDown, ArrowRight, ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, Palette, Grid, Grid3X3, MoveHorizontal, ArrowUpDown, Database, ShieldAlert, ExternalLink } from 'lucide-react';
+import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles, ZoomIn, ZoomOut, Minus, Circle, Square, Maximize, Move, RotateCw, TrendingUp, TrendingDown, ArrowRight, ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, Palette, Grid, Grid3X3, MoveHorizontal, ArrowUpDown, Database, ShieldAlert, ExternalLink, Package } from 'lucide-react';
 import { VideoModeSelector, SceneDirectorOverlay } from './VideoNodeModules';
 import { PromptEditor } from './PromptEditor';
 import { StoryboardVideoNode, StoryboardVideoChildNode } from './StoryboardVideoNode';
@@ -247,7 +247,10 @@ const arePropsEqual = (prev: NodeProps, next: NodeProps) => {
         'error', 'progress', 'duration', 'quality', 'isCompliant',
         'isExpanded', 'videoMode', 'shotType', 'cameraAngle', 'cameraMovement',
         'selectedFields', 'dramaName', 'taskGroups',
-        'modelConfig' // 视频生成配置（尺寸、时长、清晰度）
+        'modelConfig', // 视频生成配置（尺寸、时长、清晰度）
+        'selectedPlatform', 'selectedModel', 'subModel', // 分镜视频生成节点模型选择
+        'availableShots', 'selectedShotIds', 'generatedPrompt', 'fusedImage', // 分镜视频生成节点数据
+        'isLoading', 'isLoadingFusion', 'promptModified', 'status' // 状态字段
     ];
 
     for (const key of criticalDataKeys) {
@@ -493,6 +496,14 @@ const NodeComponent: React.FC<NodeProps> = ({
 
   // 🚀 Sora2配置本地状态 - 用于立即响应UI更新
   const [localSoraConfigs, setLocalSoraConfigs] = useState<Record<string, { aspect_ratio: string; duration: string; hd: boolean }>>({});
+
+  // 🎬 VIDEO_EDITOR 状态
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportSettings, setExportSettings] = useState({
+    name: `视频作品_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}_${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
+    resolution: '1080p',
+    format: 'mp4'
+  });
 
   // 同步 node.data.taskGroups 到本地状态
   useEffect(() => {
@@ -3593,7 +3604,7 @@ const NodeComponent: React.FC<NodeProps> = ({
 
          return (
              <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
-                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
                      {/* Drama name input + analyze button */}
                      <div className="flex items-center gap-2">
                          <Film size={14} className="text-violet-400 shrink-0" />
@@ -3636,8 +3647,8 @@ const NodeComponent: React.FC<NodeProps> = ({
      if (node.type === NodeType.STYLE_PRESET) {
          return (
              <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
-                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                     {/* Preset Type Selector */}
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
+                    {/* Preset Type Selector */}
                      <div className="flex flex-col gap-2">
                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
                              <Palette size={12} className="text-purple-400" />
@@ -3709,8 +3720,8 @@ const NodeComponent: React.FC<NodeProps> = ({
          const taskGroups = node.data.taskGroups || [];
          return (
              <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
-                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                     {/* Sora2 Configuration */}
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
+                    {/* Sora2 Configuration */}
                      <div className="flex flex-col gap-2">
                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
                              <Wand2 size={12} className="text-green-400" />
@@ -3921,8 +3932,8 @@ const NodeComponent: React.FC<NodeProps> = ({
 
          return (
              <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
-                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                     {/* Save Locally Button */}
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
+                    {/* Save Locally Button */}
                      {videoUrl && !locallySaved && (
                          <button
                              onClick={() => onAction?.(node.id, 'save-locally')}
@@ -3991,7 +4002,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                      transformOrigin: 'top center'
                  }}
              >
-                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
                      {/* Stage 1 (idle): 获取分镜按钮 */}
                      {status === 'idle' && (
                          <button
@@ -4157,12 +4168,14 @@ const NodeComponent: React.FC<NodeProps> = ({
                                          </div>
 
                                          {/* 平台 & 模型选择 */}
-                                         <div className="flex gap-2">
+                                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                                              <select
                                                  className="flex-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[9px] text-slate-200 focus:outline-none"
                                                  value={selectedPlatform}
-                                                 onChange={(e) => onUpdate(node.id, { selectedPlatform: e.target.value })}
-                                                 onMouseDown={(e) => e.stopPropagation()}
+                                                 onChange={(e) => {
+                                                     const newValue = e.target.value;
+                                                     onUpdate(node.id, { selectedPlatform: newValue });
+                                                 }}
                                              >
                                                  {platforms.map(p => (
                                                      <option key={p.code} value={p.code}>{p.name}</option>
@@ -4173,13 +4186,16 @@ const NodeComponent: React.FC<NodeProps> = ({
                                                  value={selectedModel}
                                                  onChange={(e) => {
                                                      const newModel = e.target.value;
-                                                     const firstSubModel = subModels[newModel]?.[0];
+                                                     // 使用当前可用的subModels获取新模型的子模型列表
+                                                     const currentSubModels = configLoaded && Object.keys(dynamicSubModels).length > 0 && dynamicSubModels[selectedPlatform]
+                                                         ? dynamicSubModels[selectedPlatform]
+                                                         : defaultSubModels;
+                                                     const firstSubModel = currentSubModels[newModel]?.[0];
                                                      onUpdate(node.id, {
                                                          selectedModel: newModel,
                                                          subModel: firstSubModel
                                                      });
                                                  }}
-                                                 onMouseDown={(e) => e.stopPropagation()}
                                              >
                                                  {platforms.find(p => p.code === selectedPlatform)?.models.map(m => (
                                                      <option key={m} value={m}>{modelNames[m]}</option>
@@ -4189,18 +4205,22 @@ const NodeComponent: React.FC<NodeProps> = ({
 
                                          {/* 子模型选择 */}
                                          {subModels[selectedModel] && subModels[selectedModel].length > 0 && (
-                                             <select
-                                                 className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[9px] text-slate-200 focus:outline-none"
-                                                 value={selectedSubModel}
-                                                 onChange={(e) => onUpdate(node.id, { subModel: e.target.value })}
-                                                 onMouseDown={(e) => e.stopPropagation()}
-                                             >
-                                                 {subModels[selectedModel].map(subModel => (
-                                                     <option key={subModel} value={subModel}>
-                                                         {subModelDisplayNames[subModel] || subModel}
-                                                     </option>
-                                                 ))}
-                                             </select>
+                                             <div onClick={(e) => e.stopPropagation()}>
+                                                 <select
+                                                     className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[9px] text-slate-200 focus:outline-none"
+                                                     value={selectedSubModel}
+                                                     onChange={(e) => {
+                                                         const newValue = e.target.value;
+                                                         onUpdate(node.id, { subModel: newValue });
+                                                     }}
+                                                 >
+                                                     {subModels[selectedModel].map(subModel => (
+                                                         <option key={subModel} value={subModel}>
+                                                             {subModelDisplayNames[subModel] || subModel}
+                                                         </option>
+                                                     ))}
+                                                 </select>
+                                             </div>
                                          )}
 
                                          {/* 宽高比 & 时长 */}
@@ -4347,7 +4367,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                          </div>
                      )}
 
-                     {/* Stage 5 (completed): 完成提示 + 重新生成按钮 */}
+                     {/* Stage 5 (completed): 完成提示 + 返回 + 重新生成按钮 */}
                      {status === 'completed' && (
                          <div className="flex gap-2">
                              <div className="flex-1 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center justify-center">
@@ -4359,9 +4379,24 @@ const NodeComponent: React.FC<NodeProps> = ({
                              <button
                                  onClick={(e) => {
                                      e.stopPropagation();
+                                     onUpdate(node.id, {
+                                         status: 'prompting',
+                                         progress: 0
+                                     });
+                                 }}
+                                 className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg flex items-center gap-2 transition-all hover:scale-[1.02]"
+                                 onMouseDown={(e) => e.stopPropagation()}
+                             >
+                                 <ChevronDown size={12} className="text-slate-400 rotate-90" />
+                                 <span className="text-[10px] text-slate-400">返回</span>
+                             </button>
+                             <button
+                                 onClick={(e) => {
+                                     e.stopPropagation();
                                      onAction?.(node.id, 'regenerate-video');
                                  }}
                                  className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg flex items-center gap-2 transition-all hover:scale-[1.02]"
+                                 onMouseDown={(e) => e.stopPropagation()}
                              >
                                  <RefreshCw size={12} className="text-purple-300" />
                                  <span className="text-[10px] text-purple-300">重新生成</span>
@@ -4435,8 +4470,8 @@ const NodeComponent: React.FC<NodeProps> = ({
 
          return (
              <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
-                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100] max-h-[320px] overflow-hidden`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                     {/* Connected Nodes List */}
+                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100] max-h-[320px] overflow-hidden`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
+                    {/* Connected Nodes List */}
                      {connectedStoryboardNodes.length > 0 && (
                          <div className="flex flex-col gap-2">
                              <div className="flex items-center justify-between">
@@ -4963,6 +4998,316 @@ const NodeComponent: React.FC<NodeProps> = ({
                             <span>拆分为影视分镜</span>
                         </button>
                     </div>
+                ) : node.type === NodeType.VIDEO_EDITOR ? (
+                    // VIDEO EDITOR NODE
+                    <>
+                    {/* Content Area: Video Grid Display */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                        {(() => {
+                            // Get connected video nodes
+                            const getConnectedVideos = () => {
+                                const videos: Array<{
+                                    id: string;
+                                    url: string;
+                                    sourceNodeId: string;
+                                    sourceNodeName: string;
+                                    duration?: number;
+                                }> = [];
+
+                                // Get all connected nodes via nodeQuery
+                                const connectedNodes = nodeQuery ? nodeQuery.getNodesByIds(node.inputs) : [];
+
+                                // Iterate through connected nodes
+                                for (const inputNode of connectedNodes) {
+
+                                    // Get video URL based on node type
+                                    let videoUrl = '';
+                                    let duration = 0;
+
+                                    switch (inputNode.type) {
+                                        case NodeType.VIDEO_GENERATOR:
+                                            videoUrl = inputNode.data.videoUri || inputNode.data.videoUris?.[0] || '';
+                                            duration = inputNode.data.duration || 0;
+                                            break;
+                                        case NodeType.SORA_VIDEO_GENERATOR:
+                                            // Get videos from task groups
+                                            const taskGroups = (inputNode.data as any).taskGroups || [];
+                                            for (const tg of taskGroups) {
+                                                if (tg.videoUrl) {
+                                                    videos.push({
+                                                        id: `${inputNode.id}-${tg.id}`,
+                                                        url: tg.videoUrl,
+                                                        sourceNodeId: inputNode.id,
+                                                        sourceNodeName: inputNode.title,
+                                                        duration: tg.videoMetadata?.duration || 0
+                                                    });
+                                                }
+                                            }
+                                            break;
+                                        case NodeType.STORYBOARD_VIDEO_GENERATOR:
+                                            // Get videos from child nodes
+                                            const childNodeIds = (inputNode.data as any).childNodeIds || [];
+                                            const childNodes = nodeQuery ? nodeQuery.getNodesByIds(childNodeIds) : [];
+                                            for (const childNode of childNodes) {
+                                                if (childNode?.data.videoUrl) {
+                                                    videos.push({
+                                                        id: childNode.id,
+                                                        url: childNode.data.videoUrl,
+                                                        sourceNodeId: inputNode.id,
+                                                        sourceNodeName: inputNode.title,
+                                                        duration: childNode.data.videoDuration || 0
+                                                    });
+                                                }
+                                            }
+                                            break;
+                                        case NodeType.VIDEO_ANALYZER:
+                                            videoUrl = inputNode.data.videoUri || '';
+                                            break;
+                                        case NodeType.VIDEO_EDITOR:
+                                            // Chain editing: get output video
+                                            videoUrl = (inputNode.data as any).outputVideoUrl || '';
+                                            break;
+                                    }
+
+                                    if (videoUrl) {
+                                        videos.push({
+                                            id: `${inputNode.id}-main`,
+                                            url: videoUrl,
+                                            sourceNodeId: inputNode.id,
+                                            sourceNodeName: inputNode.title,
+                                            duration
+                                        });
+                                    }
+                                }
+
+                                return videos;
+                            };
+
+                            const videos = getConnectedVideos();
+
+                            if (videos.length === 0) {
+                                return (
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-600">
+                                        <Film size={48} className="mb-3 opacity-30" />
+                                        <p className="text-xs">请连接视频节点</p>
+                                        <p className="text-[10px] mt-1 opacity-60">支持: 文生视频、Sora 2 视频、分镜视频、视频分析、视频编辑器</p>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div className="grid grid-cols-3 gap-2">
+                                    {videos.map((video) => (
+                                        <div
+                                            key={video.id}
+                                            className="relative group/video bg-black/30 rounded-lg overflow-hidden border border-white/5 hover:border-red-500/30 transition-all"
+                                        >
+                                            {/* Video Thumbnail */}
+                                            <div className="relative aspect-video bg-black">
+                                                <video
+                                                    src={video.url}
+                                                    className="w-full h-full object-cover"
+                                                    onMouseEnter={(e) => {
+                                                        const vid = e.currentTarget;
+                                                        vid.currentTime = 0;
+                                                        vid.play().catch(() => {});
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        const vid = e.currentTarget;
+                                                        vid.pause();
+                                                        vid.currentTime = 0;
+                                                    }}
+                                                    muted
+                                                    loop
+                                                    playsInline
+                                                />
+                                                {/* Duration Badge */}
+                                                {video.duration > 0 && (
+                                                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 rounded text-[9px] text-white font-medium">
+                                                        {video.duration.toFixed(1)}s
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Source Name */}
+                                            <div className="px-2 py-1.5 bg-black/20">
+                                                <p className="text-[9px] text-slate-400 truncate" title={video.sourceNodeName}>
+                                                    {video.sourceNodeName}
+                                                </p>
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover/video:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const a = document.createElement('a');
+                                                        a.href = video.url;
+                                                        a.download = `${video.sourceNodeName}-${video.id}.mp4`;
+                                                        a.click();
+                                                    }}
+                                                    className="p-1.5 bg-black/70 hover:bg-green-600 rounded-lg transition-colors"
+                                                    title="下载"
+                                                >
+                                                    <Download size={12} className="text-white" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        // TODO: Remove video from list
+                                                    }}
+                                                    className="p-1.5 bg-black/70 hover:bg-red-600 rounded-lg transition-colors"
+                                                    title="删除"
+                                                >
+                                                    <Trash2 size={12} className="text-white" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    {/* Operation Area: Edit & Export Buttons */}
+                    <div className="flex flex-col gap-2 p-2 border-t border-white/5">
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-[9px] text-slate-400">
+                                已连接 {node.inputs.length} 个视频节点
+                            </span>
+                            <span className="text-[9px] text-red-400">{isWorking ? '处理中...' : 'Ready'}</span>
+                        </div>
+
+                        <div className="flex gap-2">
+                            {/* Edit Video Button */}
+                            <button
+                                onClick={() => {
+                                    // TODO: Open video editor page
+                                    console.log('[VIDEO_EDITOR] Opening editor page...');
+                                }}
+                                disabled={node.inputs.length === 0}
+                                className={`
+                                    flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-[10px] font-bold text-[10px] tracking-wide transition-all duration-300
+                                    ${node.inputs.length === 0
+                                        ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:shadow-lg hover:shadow-blue-500/20 hover:scale-[1.02]'}
+                                `}
+                            >
+                                <Scissors size={14} />
+                                <span>编辑视频</span>
+                            </button>
+
+                            {/* Generate Video Button */}
+                            <button
+                                onClick={() => {
+                                    setShowExportModal(true);
+                                }}
+                                disabled={node.inputs.length === 0 || isWorking}
+                                className={`
+                                    flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-[10px] font-bold text-[10px] tracking-wide transition-all duration-300
+                                    ${node.inputs.length === 0 || isWorking
+                                        ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-red-500 to-pink-500 text-white hover:shadow-lg hover:shadow-red-500/20 hover:scale-[1.02]'}
+                                `}
+                            >
+                                <Package size={14} />
+                                <span>生成视频</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Export Modal */}
+                    {showExportModal && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm rounded-[24px]">
+                            <div className="bg-[#1c1c1e] border border-white/10 rounded-2xl p-4 w-80 shadow-2xl">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-bold text-white">导出设置</h3>
+                                    <button
+                                        onClick={() => setShowExportModal(false)}
+                                        className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+                                    >
+                                        <X size={16} className="text-slate-400" />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {/* Name Input */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 mb-1.5">
+                                            视频名称
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={exportSettings.name}
+                                            onChange={(e) => setExportSettings(prev => ({ ...prev, name: e.target.value }))}
+                                            placeholder="视频作品"
+                                            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:border-red-500/50 focus:outline-none"
+                                        />
+                                    </div>
+
+                                    {/* Resolution Select */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 mb-1.5">
+                                            分辨率
+                                        </label>
+                                        <select
+                                            value={exportSettings.resolution}
+                                            onChange={(e) => setExportSettings(prev => ({ ...prev, resolution: e.target.value }))}
+                                            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-red-500/50 focus:outline-none appearance-none cursor-pointer hover:bg-white/5"
+                                        >
+                                            <option value="1080p">1080p (Full HD)</option>
+                                            <option value="720p">720p (HD)</option>
+                                            <option value="480p">480p (SD)</option>
+                                            <option value="4k">4K (Ultra HD)</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Format Select */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 mb-1.5">
+                                            格式
+                                        </label>
+                                        <select
+                                            value={exportSettings.format}
+                                            onChange={(e) => setExportSettings(prev => ({ ...prev, format: e.target.value }))}
+                                            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-red-500/50 focus:outline-none appearance-none cursor-pointer hover:bg-white/5"
+                                        >
+                                            <option value="mp4">MP4</option>
+                                            <option value="webm">WebM</option>
+                                            <option value="mov">MOV</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex gap-2 pt-2">
+                                        <button
+                                            onClick={() => setShowExportModal(false)}
+                                            className="flex-1 px-4 py-2 rounded-lg text-[10px] font-bold text-slate-400 bg-white/5 hover:bg-white/10 transition-colors"
+                                        >
+                                            取消
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                // TODO: Implement video merging logic
+                                                console.log('[VIDEO_EDITOR] Exporting video:', exportSettings);
+                                                setShowExportModal(false);
+                                            }}
+                                            disabled={isWorking || !exportSettings.name.trim()}
+                                            className={`
+                                                flex-1 px-4 py-2 rounded-lg text-[10px] font-bold transition-all
+                                                ${isWorking || !exportSettings.name.trim()
+                                                    ? 'bg-red-500/20 text-red-400 cursor-not-allowed'
+                                                    : 'bg-gradient-to-r from-red-500 to-pink-500 text-white hover:shadow-lg hover:shadow-red-500/20'}
+                                            `}
+                                        >
+                                            {isWorking ? '生成中...' : '开始生成'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    </>
                 ) : (
                     // ... (Other nodes basic UI) ...
                     <>

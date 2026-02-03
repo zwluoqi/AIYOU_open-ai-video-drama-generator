@@ -69,6 +69,7 @@ const getNodeIcon = (t: string) => {
         case NodeType.DRAMA_ANALYZER: return Search;
         case NodeType.DRAMA_REFINED: return Sparkles;
         case NodeType.STYLE_PRESET: return Palette;
+        case NodeType.VIDEO_EDITOR: return Film;
         default: return Plus;
     }
 };
@@ -290,7 +291,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     </span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
-                    {[NodeType.IMAGE_GENERATOR, NodeType.SCRIPT_PLANNER, NodeType.SCRIPT_EPISODE, NodeType.CHARACTER_NODE, NodeType.STYLE_PRESET, NodeType.STORYBOARD_GENERATOR, NodeType.STORYBOARD_IMAGE, NodeType.STORYBOARD_SPLITTER, NodeType.SORA_VIDEO_GENERATOR, NodeType.STORYBOARD_VIDEO_GENERATOR, NodeType.DRAMA_ANALYZER].map(t => {
+                    {[NodeType.IMAGE_GENERATOR, NodeType.SCRIPT_PLANNER, NodeType.SCRIPT_EPISODE, NodeType.CHARACTER_NODE, NodeType.STYLE_PRESET, NodeType.STORYBOARD_GENERATOR, NodeType.STORYBOARD_IMAGE, NodeType.STORYBOARD_SPLITTER, NodeType.SORA_VIDEO_GENERATOR, NodeType.STORYBOARD_VIDEO_GENERATOR, NodeType.DRAMA_ANALYZER, NodeType.VIDEO_EDITOR].map(t => {
                         const ItemIcon = getNodeIcon(t);
                         return (
                             <button

@@ -46,6 +46,7 @@ export function getNodeNameCN(type: NodeType): string {
     case NodeType.DRAMA_ANALYZER: return '剧目分析';
     case NodeType.DRAMA_REFINED: return '剧目精炼';
     case NodeType.STYLE_PRESET: return '全局风格';
+    case NodeType.VIDEO_EDITOR: return '视频编辑器';
     default: return type;
   }
 }
@@ -72,7 +73,8 @@ export function getNodeIcon(type: NodeType) {
     [NodeType.DRAMA_REFINED]: Sparkles,
     [NodeType.STYLE_PRESET]: Palette,
     [NodeType.STORYBOARD_VIDEO_GENERATOR]: Film,
-    [NodeType.STORYBOARD_VIDEO_CHILD]: VideoIcon
+    [NodeType.STORYBOARD_VIDEO_CHILD]: VideoIcon,
+    [NodeType.VIDEO_EDITOR]: Film
   };
 
   return icons[type] || Type;
@@ -101,7 +103,8 @@ export function getNodeColor(type: NodeType): string {
     [NodeType.DRAMA_REFINED]: '#06b6d4',
     [NodeType.STYLE_PRESET]: '#a855f7',
     [NodeType.STORYBOARD_VIDEO_GENERATOR]: '#a855f7',  // Purple color for storyboard video generator
-    [NodeType.STORYBOARD_VIDEO_CHILD]: '#a855f7'
+    [NodeType.STORYBOARD_VIDEO_CHILD]: '#a855f7',
+    [NodeType.VIDEO_EDITOR]: '#ef4444'  // Red color for video editor
   };
 
   return colors[type] || '#6366f1';
@@ -133,7 +136,8 @@ export function getApproxNodeHeight(node: AppNode): number {
     [NodeType.DRAMA_REFINED]: 400,
     [NodeType.STYLE_PRESET]: 420,
     [NodeType.STORYBOARD_VIDEO_GENERATOR]: 720,  // Taller for 5-phase state machine
-    [NodeType.STORYBOARD_VIDEO_CHILD]: 480  // Medium height for video + prompt display
+    [NodeType.STORYBOARD_VIDEO_CHILD]: 480,  // Medium height for video + prompt display
+    [NodeType.VIDEO_EDITOR]: 500  // Medium height for video grid display
   };
 
   let height = baseHeights[node.type] || 360;
