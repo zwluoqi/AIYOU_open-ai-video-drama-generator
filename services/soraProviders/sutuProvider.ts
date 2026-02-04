@@ -17,6 +17,7 @@ import {
   SoraAPIError
 } from './types';
 import { logAPICall } from '../apiLogger';
+import { getSoraModelName } from '../soraModelConfig';
 
 export class SutuProvider implements SoraProvider {
   readonly name = 'sutu' as const;
@@ -45,13 +46,13 @@ export class SutuProvider implements SoraProvider {
   ): Promise<SoraSubmitResult> {
     const config = this.transformConfig(params.config);
 
-    // 根据 hd 参数选择端点
-    const usePro = config.hd;  // hd=true 使用 Pro 版
-    const submitEndpoint = usePro
-      ? 'https://api.wuyinkeji.com/api/sora2pro/submit'
-      : 'https://api.wuyinkeji.com/api/sora2-new/submit';
+    // ✅ 使用统一的代理端点
+    const submitEndpoint = 'http://localhost:3001/api/sutu/create';
 
-    console.log(`[${this.displayName}] 使用 ${usePro ? 'Sora2 Pro' : 'Sora2 标准版'} 提交任务`, {
+    // ✅ 动态获取模型名称
+    const modelName = getSoraModelName('sutu', params.config.hd);
+
+    console.log(`[${this.displayName}] 使用模型 ${modelName} 提交任务`, {
       hd: config.hd,
       duration: config.duration,
       aspectRatio: config.aspect_ratio
@@ -60,6 +61,9 @@ export class SutuProvider implements SoraProvider {
     // 构建 application/x-www-form-urlencoded 格式
     const formData = new URLSearchParams();
     formData.append('prompt', params.prompt);
+
+    // ✅ 动态模型名
+    formData.append('model', modelName);
 
     // 可选：参考图片
     if (params.referenceImageUrl) {
@@ -70,7 +74,7 @@ export class SutuProvider implements SoraProvider {
     formData.append('aspectRatio', config.aspect_ratio);
 
     // duration 映射
-    if (usePro) {
+    if (config.hd) {
       // Pro 版支持 15 秒（高清）和 25 秒（标清）
       if (config.duration === '25') {
         formData.append('duration', '25');
@@ -100,7 +104,7 @@ export class SutuProvider implements SoraProvider {
         const response = await fetch(submitEndpoint, {
           method: 'POST',
           headers: {
-            'Authorization': apiKey,
+            'X-API-Key': apiKey,  // ✅ 使用统一的请求头
             'Content-Type': 'application/x-www-form-urlencoded;charset:utf-8;'
           },
           body: formData.toString()
@@ -168,7 +172,8 @@ export class SutuProvider implements SoraProvider {
     onProgress?: (progress: number) => void,
     context?: CallContext
   ): Promise<SoraVideoResult> {
-    const statusEndpoint = `https://api.wuyinkeji.com/api/sora2/detail?id=${taskId}&key=${apiKey}`;
+    // ✅ 使用统一的代理端点
+    const statusEndpoint = `http://localhost:3001/api/sutu/query?id=${taskId}`;
 
     return logAPICall(
       'sutuCheckStatus',
@@ -178,7 +183,7 @@ export class SutuProvider implements SoraProvider {
         const response = await fetch(statusEndpoint, {
           method: 'GET',
           headers: {
-            'Authorization': apiKey,
+            'X-API-Key': apiKey,  // ✅ 使用统一的请求头
             'Content-Type': 'application/x-www-form-urlencoded;charset:utf-8;'
           }
         });

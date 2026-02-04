@@ -90,7 +90,7 @@ interface NodeProps {
   onAction: (id: string, prompt?: string) => void;
   onDelete: (id: string) => void;
   onExpand?: (data: { type: 'image' | 'video', src: string, rect: DOMRect, images?: string[], initialIndex?: number }) => void;
-  onCrop?: (id: string, imageBase64: string) => void; 
+  onCrop?: (id: string, imageBase64: string) => void;
   onNodeMouseDown: (e: React.MouseEvent, id: string) => void;
   onPortMouseDown: (e: React.MouseEvent, id: string, type: 'input' | 'output') => void;
   onPortMouseUp: (e: React.MouseEvent, id: string, type: 'input' | 'output') => void;
@@ -250,7 +250,7 @@ const arePropsEqual = (prev: NodeProps, next: NodeProps) => {
         'generatedEpisodes',
         'episodeSplitCount', 'episodeModificationSuggestion', 'selectedChapter', // 剧本分集字段
         'storyboardCount', 'storyboardDuration', 'storyboardStyle', 'storyboardGridType', 'storyboardShots', // 分镜图字段
-        'storyboardGridImage', 'storyboardGridImages',
+        'storyboardGridImage', 'storyboardGridImages', 'storyboardPanelOrientation', // 分镜图面板方向
         'extractedCharacterNames', 'characterConfigs', 'generatedCharacters',
         'stylePrompt', 'negativePrompt', 'visualStyle', // 风格预设字段
         'error', 'progress', 'duration', 'quality', 'isCompliant',
@@ -3275,6 +3275,7 @@ const NodeComponent: React.FC<NodeProps> = ({
           const locallySaved = node.data.locallySaved;
           const taskNumber = node.data.taskNumber;
           const soraTaskId = node.data.soraTaskId;
+          const provider = node.data.provider || 'yunwu';
 
           const [isPlaying, setIsPlaying] = useState(false);
           const [currentTime, setCurrentTime] = useState(0);
@@ -3283,6 +3284,7 @@ const NodeComponent: React.FC<NodeProps> = ({
           const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
           const [useLocalServer, setUseLocalServer] = useState(false);
           const [videoError, setVideoError] = useState<string | null>(null);
+          const [isRefreshing, setIsRefreshing] = useState(false);
 
           // 使用videoBlobUrl（从IndexedDB加载的）优先于原始videoUrl
           const displayVideoUrl = videoBlobUrl || videoUrl;
@@ -3292,6 +3294,117 @@ const NodeComponent: React.FC<NodeProps> = ({
               const mins = Math.floor(time / 60);
               const secs = Math.floor(time % 60);
               return `${mins}:${secs.toString().padStart(2, '0')}`;
+          };
+
+          // 刷新任务状态
+          const handleRefreshStatus = async () => {
+              if (!soraTaskId || isRefreshing) return;
+
+              setIsRefreshing(true);
+              console.log('[Sora2子节点] 刷新任务状态:', soraTaskId);
+
+              try {
+                  // 获取API Key
+                  const getApiKey = async () => {
+                      if (provider === 'yunwu') {
+                          return localStorage.getItem('YUNWU_API_KEY');
+                      } else if (provider === 'sutu') {
+                          return localStorage.getItem('SUTU_API_KEY');
+                      } else if (provider === 'yijiapi') {
+                          return localStorage.getItem('YIJIAPI_API_KEY');
+                      }
+                      return null;
+                  };
+
+                  const apiKey = await getApiKey();
+                  if (!apiKey) {
+                      alert('请先配置API Key');
+                      return;
+                  }
+
+                  // 根据不同的provider调用不同的API
+                  let apiUrl: string;
+                  let requestBody: any = { task_id: soraTaskId };
+
+                  if (provider === 'yunwu') {
+                      apiUrl = 'http://localhost:3001/api/yunwuapi/status';
+                      requestBody = { task_id: soraTaskId };
+                  } else if (provider === 'sutu') {
+                      apiUrl = 'http://localhost:3001/api/sutu/query';
+                      requestBody = { id: soraTaskId };
+                  } else if (provider === 'yijiapi') {
+                      apiUrl = `http://localhost:3001/api/yijiapi/query/${encodeURIComponent(soraTaskId)}`;
+                      requestBody = null;
+                  } else {
+                      throw new Error('不支持的provider');
+                  }
+
+                  const response = await fetch(apiUrl, {
+                      method: 'POST',
+                      headers: {
+                          'Content-Type': 'application/json',
+                          'X-API-Key': apiKey
+                      },
+                      body: requestBody ? JSON.stringify(requestBody) : undefined
+                  });
+
+                  if (!response.ok) {
+                      throw new Error(`HTTP ${response.status}`);
+                  }
+
+                  const data = await response.json();
+                  console.log('[Sora2子节点] 刷新响应:', data);
+
+                  // 根据provider解析响应
+                  let newVideoUrl: string | undefined;
+                  let newStatus: string;
+                  let newProgress: number;
+                  let newViolationReason: string | undefined;
+
+                  if (provider === 'yunwu') {
+                      newVideoUrl = data.video_url;
+                      newStatus = data.status;
+                      newProgress = data.progress || 0;
+                      if (newStatus === 'error' || newStatus === 'failed') {
+                          newViolationReason = data.error || '视频生成失败';
+                      }
+                  } else if (provider === 'sutu') {
+                      newVideoUrl = data.data?.remote_url || data.data?.video_url;
+                      newStatus = data.data?.status === 'success' ? 'completed' : 'processing';
+                      newProgress = data.data?.status === 'success' ? 100 : 50;
+                  } else if (provider === 'yijiapi') {
+                      newVideoUrl = data.url;
+                      newStatus = data.status === 'completed' ? 'completed' : 'processing';
+                      newProgress = data.progress || (data.status === 'completed' ? 100 : 0);
+                  }
+
+                  // 更新节点数据
+                  if (newVideoUrl) {
+                      onUpdate(node.id, {
+                          videoUrl: newVideoUrl,
+                          status: newStatus === 'completed' ? NodeStatus.SUCCESS : undefined,
+                          progress: newProgress,
+                          violationReason: newViolationReason
+                      });
+                      console.log('[Sora2子节点] ✅ 视频已更新:', newVideoUrl);
+                  } else if (newStatus === 'processing' || newStatus === 'pending') {
+                      onUpdate(node.id, {
+                          progress: newProgress,
+                          violationReason: undefined
+                      });
+                      console.log('[Sora2子节点] 任务仍在处理中，进度:', newProgress);
+                  } else if (newViolationReason) {
+                      onUpdate(node.id, {
+                          violationReason: newViolationReason,
+                          status: NodeStatus.ERROR
+                      });
+                  }
+              } catch (error: any) {
+                  console.error('[Sora2子节点] ❌ 刷新失败:', error);
+                  alert(`刷新失败: ${error.message}`);
+              } finally {
+                  setIsRefreshing(false);
+              }
           };
 
           // 直接下载视频（从 URL 或浏览器缓存）
@@ -3448,14 +3561,13 @@ const NodeComponent: React.FC<NodeProps> = ({
 
           return (
               <div className="w-full h-full flex flex-col bg-zinc-900 overflow-hidden relative">
-                  {/* Video Player */}
+                  {/* Video Player Area */}
                   {displayVideoUrl ? (
                       <>
                           <video
                               ref={(el) => {
                                   if (el) {
                                       videoRef.current = el;
-                                      // 设置视频元数据加载监听
                                       el.onloadedmetadata = () => {
                                           setDurationValue(el.duration);
                                           setVideoError(null);
@@ -3470,7 +3582,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                               className="w-full h-full object-cover bg-zinc-900"
                               loop
                               playsInline
-                              controls  // ✅ 使用原生视频控件（包含下载按钮）
+                              controls
                               onContextMenu={(e) => {
                                   e.preventDefault();
                                   setContextMenu({ x: e.clientX, y: e.clientY });
@@ -3486,7 +3598,6 @@ const NodeComponent: React.FC<NodeProps> = ({
                               onEnded={() => setIsPlaying(false)}
                           />
 
-                          {/* 右键菜单 */}
                           {contextMenu && (
                               <div
                                   className="fixed z-50 bg-zinc-800 border border-white/10 rounded-lg shadow-xl py-1 min-w-[200px]"
@@ -3520,7 +3631,6 @@ const NodeComponent: React.FC<NodeProps> = ({
                               </div>
                           )}
 
-                          {/* 点击其他地方关闭菜单 */}
                           {contextMenu && (
                               <div
                                   className="fixed inset-0 z-40"
@@ -3529,20 +3639,25 @@ const NodeComponent: React.FC<NodeProps> = ({
                           )}
                       </>
                   ) : violationReason || node.data.error ? (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-red-400 bg-black/40 p-6 text-center">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-red-400 bg-black/40 p-6 text-center z-10 pointer-events-none">
                           <AlertCircle className="text-red-500 mb-1" size={32} />
                           <span className="text-xs font-medium text-red-200">{violationReason || node.data.error}</span>
                       </div>
                   ) : (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
-                          <VideoIcon size={32} className="opacity-50" />
-                          <span className="text-xs font-medium">等待视频生成</span>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600 z-10 pointer-events-none">
+                          <div className="relative">
+                              <VideoIcon size={32} className="opacity-50" />
+                              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                                  <Loader2 size={16} className="animate-spin text-cyan-500" />
+                              </div>
+                          </div>
+                          <span className="text-xs font-medium mt-2">视频生成中...</span>
                       </div>
                   )}
 
-                  {/* Error overlay */}
+                  {/* Error overlay - Below bottom panel */}
                   {node.status === NodeStatus.ERROR && !displayVideoUrl && (
-                      <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-10">
                           <AlertCircle className="text-red-500 mb-2" />
                           <span className="text-xs text-red-200">{node.data.error}</span>
                       </div>
@@ -3965,60 +4080,234 @@ const NodeComponent: React.FC<NodeProps> = ({
      if (node.type === NodeType.SORA_VIDEO_CHILD) {
          const locallySaved = node.data.locallySaved;
          const videoUrl = node.data.videoUrl;
+         const parentId = node.data.parentId || node.inputs?.[0];  // 优先使用parentId，回退到inputs[0]
+         const taskGroupId = node.data.taskGroupId;  // 任务组ID
+         const provider = node.data.provider || 'yunwu';
+         const [isRefreshing, setIsRefreshing] = useState(false);
+
+         // 刷新任务状态
+         const handleRefreshStatus = async () => {
+             if (!parentId || isRefreshing) {
+                 console.error('[Sora2子节点] 缺少parentId或正在刷新');
+                 return;
+             }
+
+             // 从母节点查询taskGroups
+             const parentNode = nodeQuery?.getNode(parentId);
+             if (!parentNode) {
+                 console.error('[Sora2子节点] 找不到母节点:', parentId);
+                 alert('找不到母节点');
+                 return;
+             }
+
+             // 从taskGroups中找到对应的taskGroup
+             const taskGroups = parentNode.data.taskGroups || [];
+             const taskGroup = taskGroups.find((tg: any) => tg.id === taskGroupId);
+
+             if (!taskGroup) {
+                 console.error('[Sora2子节点] 找不到任务组:', taskGroupId);
+                 alert('找不到任务组');
+                 return;
+             }
+
+             const soraTaskId = taskGroup.soraTaskId;
+             if (!soraTaskId) {
+                 console.error('[Sora2子节点] 任务组没有soraTaskId:', taskGroup);
+                 alert('任务组没有任务ID，请重新生成');
+                 return;
+             }
+
+             setIsRefreshing(true);
+             console.log('[Sora2子节点] 刷新任务状态:', { parentId, taskGroupId, soraTaskId, provider });
+
+             try {
+                 // 获取API Key
+                 const getApiKey = async () => {
+                     if (provider === 'yunwu') {
+                         return localStorage.getItem('YUNWU_API_KEY');
+                     } else if (provider === 'sutu') {
+                         return localStorage.getItem('SUTU_API_KEY');
+                     } else if (provider === 'yijiapi') {
+                         return localStorage.getItem('YIJIAPI_API_KEY');
+                     }
+                     return null;
+                 };
+
+                 const apiKey = await getApiKey();
+                 if (!apiKey) {
+                     alert('请先配置API Key');
+                     return;
+                 }
+
+                 // 根据不同的provider调用不同的API
+                 let apiUrl: string;
+                 let requestBody: any;
+
+                 if (provider === 'yunwu') {
+                     apiUrl = 'http://localhost:3001/api/yunwuapi/status';
+                     requestBody = { task_id: soraTaskId };
+                 } else if (provider === 'sutu') {
+                     apiUrl = 'http://localhost:3001/api/sutu/query';
+                     requestBody = { id: soraTaskId };
+                 } else if (provider === 'yijiapi') {
+                     apiUrl = `http://localhost:3001/api/yijiapi/query/${encodeURIComponent(soraTaskId)}`;
+                     requestBody = null;
+                 } else {
+                     throw new Error('不支持的provider');
+                 }
+
+                 const response = await fetch(apiUrl, {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'X-API-Key': apiKey
+                     },
+                     body: requestBody ? JSON.stringify(requestBody) : undefined
+                 });
+
+                 if (!response.ok) {
+                     throw new Error(`HTTP ${response.status}`);
+                 }
+
+                 const data = await response.json();
+                 console.log('[Sora2子节点] 刷新响应:', data);
+
+                 // 根据provider解析响应
+                 let newVideoUrl: string | undefined;
+                 let newStatus: string;
+                 let newProgress: number;
+                 let newViolationReason: string | undefined;
+
+                 if (provider === 'yunwu') {
+                     newVideoUrl = data.video_url;
+                     newStatus = data.status;
+                     newProgress = data.progress || 0;
+                     if (newStatus === 'error' || newStatus === 'failed') {
+                         newViolationReason = data.error || '视频生成失败';
+                     }
+                 } else if (provider === 'sutu') {
+                     newVideoUrl = data.data?.remote_url || data.data?.video_url;
+                     newStatus = data.data?.status === 'success' ? 'completed' : 'processing';
+                     newProgress = data.data?.status === 'success' ? 100 : 50;
+                 } else if (provider === 'yijiapi') {
+                     newVideoUrl = data.url;
+                     newStatus = data.status === 'completed' ? 'completed' : 'processing';
+                     newProgress = data.progress || (data.status === 'completed' ? 100 : 0);
+                 }
+
+                 // 更新节点数据
+                 if (newVideoUrl) {
+                     onUpdate(node.id, {
+                         videoUrl: newVideoUrl,
+                         status: newStatus === 'completed' ? NodeStatus.SUCCESS : undefined,
+                         progress: newProgress,
+                         violationReason: newViolationReason
+                     });
+                     console.log('[Sora2子节点] ✅ 视频已更新:', newVideoUrl);
+                 } else if (newStatus === 'processing' || newStatus === 'pending') {
+                     onUpdate(node.id, {
+                         progress: newProgress,
+                         violationReason: undefined
+                     });
+                     console.log('[Sora2子节点] 任务仍在处理中，进度:', newProgress);
+                 } else if (newViolationReason) {
+                     onUpdate(node.id, {
+                         violationReason: newViolationReason,
+                         status: NodeStatus.ERROR
+                     });
+                 }
+             } catch (error: any) {
+                 console.error('[Sora2子节点] ❌ 刷新失败:', error);
+                 alert(`刷新失败: ${error.message}`);
+             } finally {
+                 setIsRefreshing(false);
+             }
+         };
 
          return (
              <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
-                 <div className={`w-full rounded-[20px] p-3 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
-                    {/* Save Locally Button */}
-                     {videoUrl && !locallySaved && (
-                         <button
-                             onClick={() => onAction?.(node.id, 'save-locally')}
-                             disabled={isActionDisabled}
-                             className={`w-full px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                                 isWorking
-                                     ? 'bg-white/5 text-slate-500 cursor-not-allowed'
-                                     : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:shadow-lg hover:shadow-green-500/20'
-                             }`}
-                         >
-                             {isWorking ? (
-                                 <>
-                                     <Loader2 className="animate-spin" size={14} />
-                                     <span>保存中...</span>
-                                 </>
-                             ) : (
-                                 <>
-                                     <Download size={14} />
-                                     <span>保存到本地</span>
-                                 </>
-                             )}
-                         </button>
-                     )}
+                 <div className={`w-full rounded-[20px] p-4 flex flex-col gap-3 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'OPTION') e.stopPropagation(); }} onWheel={(e) => e.stopPropagation()}>
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-3">
+                        {/* Refresh Status Button - 需要parentId */}
+                        {parentId && (
+                             <button
+                                 onClick={handleRefreshStatus}
+                                 disabled={isRefreshing}
+                                 className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                                     isRefreshing
+                                         ? 'bg-white/10 text-slate-500 cursor-not-allowed border border-white/10'
+                                         : 'bg-gradient-to-r from-cyan-500/30 to-blue-500/30 hover:from-cyan-500/40 hover:to-blue-500/40 text-cyan-100 border border-cyan-500/40 shadow-lg shadow-cyan-500/10'
+                                 }`}
+                             >
+                                 {isRefreshing ? (
+                                     <>
+                                         <RefreshCw className="animate-spin" size={18} />
+                                         <span>刷新中...</span>
+                                     </>
+                                 ) : (
+                                     <>
+                                         <RefreshCw size={18} />
+                                         <span>刷新状态</span>
+                                     </>
+                                 )}
+                             </button>
+                        )}
 
-                     {/* Sora Prompt Display */}
+                        {/* Save Locally Button */}
+                         {videoUrl && !locallySaved && (
+                             <button
+                                 onClick={() => onAction?.(node.id, 'save-locally')}
+                                 disabled={isActionDisabled}
+                                 className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                                     isWorking
+                                         ? 'bg-white/10 text-slate-500 cursor-not-allowed border border-white/10'
+                                         : 'bg-gradient-to-r from-green-500/30 to-emerald-500/30 hover:from-green-500/40 hover:to-emerald-500/40 text-green-100 border border-green-500/40 shadow-lg shadow-green-500/10'
+                                 }`}
+                             >
+                                 {isWorking ? (
+                                     <>
+                                         <Loader2 className="animate-spin" size={18} />
+                                         <span>保存中...</span>
+                                     </>
+                                 ) : (
+                                     <>
+                                         <Download size={18} />
+                                         <span>保存本地</span>
+                                     </>
+                                 )}
+                             </button>
+                         )}
+                    </div>
+
+                     {/* Sora Prompt Display - Scrollable Version */}
                      {node.data.soraPrompt && (
-                         <div className="flex flex-col gap-2">
-                             <label className="text-[10px] text-slate-400">Sora 提示词:</label>
-                             <textarea
-                                 className="w-full p-2 bg-black/30 rounded border border-white/10 text-[9px] text-slate-300 font-mono resize-y min-h-[400px] max-h-[600px] overflow-y-auto custom-scrollbar focus:outline-none focus:border-cyan-500/30"
-                                 defaultValue={node.data.soraPrompt}
-                                 onChange={(e) => {
-                                     onUpdate(node.id, { soraPrompt: e.target.value });
-                                 }}
-                                 onMouseDown={(e) => e.stopPropagation()}
-                                 onTouchStart={(e) => e.stopPropagation()}
-                                 onPointerDown={(e) => e.stopPropagation()}
-                                 onWheel={(e) => e.stopPropagation()}
-                                 placeholder="Sora 提示词..."
-                             />
+                         <div className="flex flex-col gap-2 p-3 bg-black/30 rounded-xl border border-white/10">
+                             <div className="text-xs text-slate-400 font-bold">Sora 提示词</div>
+                             <div className="max-h-32 overflow-y-auto custom-scrollbar pr-2">
+                                 <p className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">{node.data.soraPrompt}</p>
+                             </div>
                          </div>
                      )}
 
-                     {/* Info */}
-                     {locallySaved && (
-                         <div className="text-[9px] text-green-400 text-center">
-                             ✓ 已保存到: {node.data.videoFilePath || '本地'}
+                     {/* Task Info */}
+                     {node.data.taskNumber && (
+                         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+                             <span>任务 #{node.data.taskNumber}</span>
+                             {provider && <span>{provider}</span>}
                          </div>
                      )}
+
+                     {/* Status */}
+                     {locallySaved ? (
+                         <div className="text-center py-2 px-3 bg-green-500/20 rounded-lg border border-green-500/30">
+                             <span className="text-sm text-green-300 font-bold">✓ 已保存到本地</span>
+                         </div>
+                     ) : !videoUrl ? (
+                         <div className="text-center py-2 px-3 bg-slate-500/20 rounded-lg border border-slate-500/30">
+                             <span className="text-sm text-slate-400">点击刷新状态重新查询</span>
+                         </div>
+                     ) : null}
                  </div>
              </div>
          );

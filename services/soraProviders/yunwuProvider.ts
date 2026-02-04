@@ -14,6 +14,7 @@ import {
   SoraAPIError
 } from './types';
 import { logAPICall } from '../apiLogger';
+import { getSoraModelName } from '../soraModelConfig';
 
 export class YunwuProvider implements SoraProvider {
   readonly name = 'yunwu' as const;
@@ -56,7 +57,7 @@ export class YunwuProvider implements SoraProvider {
 
     const requestBody = {
       prompt: params.prompt,
-      model: 'sora-2',
+      model: getSoraModelName('yunwu', params.config.hd),
       images: params.referenceImageUrl ? [params.referenceImageUrl] : [],
       ...config,
     };
@@ -142,6 +143,13 @@ export class YunwuProvider implements SoraProvider {
 
         const data: any = await response.json();
 
+        console.log(`[${this.displayName}] 📥 原始API响应:`, {
+          taskId,
+          fullResponse: data,
+          hasId: !!data.id,
+          hasDetail: !!data.detail
+        });
+
         // 提取嵌套的 detail 对象
         const detail = data.detail || {};
 
@@ -152,12 +160,14 @@ export class YunwuProvider implements SoraProvider {
         const generations = detail.generations || [];
         const videoUrl = generations[0]?.url;
 
-        console.log(`[${this.displayName}] API Response:`, {
+        console.log(`[${this.displayName}] ✅ 解析后的数据:`, {
           taskId,
-          status: detail.status,
+          dataId: data.id,
+          detailStatus: detail.status,
           progress,
           hasVideoUrl: !!videoUrl,
           generationsCount: generations.length,
+          videoUrl: videoUrl || 'none'
         });
 
         // 更新进度

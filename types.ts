@@ -284,6 +284,18 @@ export interface AppNode {
     audienceResonance?: string; // 受众共鸣点
     artStyle?: string; // 画风
     selectedFields?: string[]; // 选中要传递的字段
+
+    // Sora Child Node Specifics
+    parentId?: string; // 父节点ID (用于从父节点获取currentTaskId)
+    provider?: 'yunwu' | 'sutu' | 'yijiapi' | 'kie' | 'dayuapi'; // Sora提供商
+    soraTaskId?: string; // 任务ID (已弃用，保留用于兼容性)
+    taskGroupId?: string; // 任务组ID
+    taskNumber?: number; // 任务组编号
+    soraPrompt?: string; // Sora提示词
+    videoUrlWatermarked?: string; // 带水印的视频URL
+    isCompliant?: boolean; // 是否合规
+    violationReason?: string; // 违规原因
+    locallySaved?: boolean; // 是否已本地保存
   };
   inputs: string[]; // IDs of nodes this node connects FROM
 }
@@ -371,6 +383,9 @@ export interface SoraTaskGroup {
   // 参考图
   referenceImage?: string; // 拼接后的参考图URL或Base64
   imageFused: boolean;
+
+  // API提供商
+  provider?: 'yunwu' | 'sutu' | 'yijiapi' | 'kie' | 'dayuapi'; // Sora提供商
 
   // 视频生成状态
   generationStatus: 'idle' | 'prompt_ready' | 'image_fused' | 'uploading' | 'generating' | 'completed' | 'failed';

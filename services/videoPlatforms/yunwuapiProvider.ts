@@ -10,6 +10,7 @@ import {
   VideoGenerationRequest,
   VideoGenerationResult
 } from './types';
+import { logAPICall } from '../apiLogger';
 
 /**
  * 云雾API平台配置
@@ -142,27 +143,46 @@ export class YunwuAPIPlatformProvider implements VideoPlatformProvider {
     context?: any,
     subModel?: string  // 新增子模型参数
   ): Promise<{ taskId: string }> {
-    try {
-      const modelEndpoint = this.modelEndpoints[model];
-      if (!modelEndpoint) {
-        throw new Error(`不支持的模型: ${model}`);
-      }
-
-      // 优先使用 subModel，如果没有则使用默认的 submitModel
-      const actualModel = subModel || modelEndpoint.submitModel;
-      console.log(`[YunwuAPI] 提交任务 - 模型: ${model}, 子模型: ${actualModel}, 提示词: ${params.prompt.substring(0, 50)}...`);
-
-      // luma 使用不同的端点和参数格式
-      if (!modelEndpoint.useUnifiedEndpoint) {
-        return this.submitLumaTask(params, apiKey, actualModel);
-      }
-
-      // veo/sora 等使用统一格式
-      return this.submitUnifiedTask(model, params, apiKey, actualModel);
-    } catch (error: any) {
-      console.error(`[YunwuAPI] 提交任务失败:`, error);
-      throw new Error(`云雾API任务提交失败: ${error.message}`);
+    const modelEndpoint = this.modelEndpoints[model];
+    if (!modelEndpoint) {
+      throw new Error(`不支持的模型: ${model}`);
     }
+
+    // 优先使用 subModel，如果没有则使用默认的 submitModel
+    const actualModel = subModel || modelEndpoint.submitModel;
+
+    // ✅ 使用 logAPICall 记录API调用
+    return logAPICall(
+      'yunwuapiSubmitTask',
+      async () => {
+        console.log(`[YunwuAPI] 提交任务 - 模型: ${model}, 子模型: ${actualModel}, 提示词: ${params.prompt.substring(0, 50)}...`);
+
+        // luma 使用不同的端点和参数格式
+        if (!modelEndpoint.useUnifiedEndpoint) {
+          return await this.submitLumaTask(params, apiKey, actualModel);
+        }
+
+        // veo/sora 等使用统一格式
+        return await this.submitUnifiedTask(model, params, apiKey, actualModel);
+      },
+      {
+        model: actualModel,
+        prompt: params.prompt.substring(0, 500) + (params.prompt.length > 500 ? '...' : ''),
+        options: {
+          aspectRatio: params.config.aspect_ratio,
+          duration: params.config.duration,
+          quality: params.config.quality,
+          hasReferenceImage: !!params.referenceImageUrl
+        },
+        inputImagesCount: params.referenceImageUrl ? 1 : 0
+      },
+      {
+        nodeId: context?.nodeId,
+        nodeType: context?.nodeType || 'STORYBOARD_VIDEO_GENERATOR',
+        platform: this.platformName,
+        logType: 'submission'
+      }
+    );
   }
 
   /**
@@ -307,96 +327,107 @@ export class YunwuAPIPlatformProvider implements VideoPlatformProvider {
     apiKey: string,
     context?: any
   ): Promise<VideoGenerationResult> {
-    try {
-      const modelEndpoint = this.modelEndpoints[model];
-      if (!modelEndpoint) {
-        throw new Error(`不支持的模型: ${model}`);
-      }
-
-      // 通过本地代理调用
-      const response = await fetch(`${this.config.baseUrl}${this.config.endpoints.status}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey
-        },
-        body: JSON.stringify({
-          model: modelEndpoint.submitModel,
-          task_id: taskId
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      console.log('[YunwuAPI] 状态查询响应:', {
-        taskId,
-        rawStatus: data.status,
-        rawProgress: data.progress,
-        rawProgressPct: data.progress_pct,
-        rawVideoUrl: data.video_url,
-        fullData: data
-      });
-
-      // 映射状态
-      let status: 'queued' | 'processing' | 'completed' | 'error';
-      switch (data.status) {
-        case 'pending':
-        case 'queued':
-          status = 'queued';
-          break;
-        case 'processing':
-        case 'generating':
-          status = 'processing';
-          break;
-        case 'completed':
-        case 'succeeded':
-          status = 'completed';
-          break;
-        case 'failed':
-        case 'error':
-          status = 'error';
-          break;
-        default:
-          status = 'processing';
-      }
-
-      const progress = data.progress || data.progress_pct || 0;
-
-      console.log('[YunwuAPI] 映射后的状态:', {
-        taskId,
-        mappedStatus: status,
-        mappedProgress: progress,
-        videoUrl: data.video_url
-      });
-
-      const result: VideoGenerationResult = {
-        taskId,
-        status,
-        progress: progress
-      };
-
-      if (status === 'completed') {
-        result.videoUrl = data.video_url;
-        result.videoDuration = data.duration;
-        result.videoResolution = data.resolution;
-        result.coverUrl = data.cover_url;
-        console.log('[YunwuAPI] 任务完成，视频URL:', data.video_url);
-      }
-
-      if (status === 'error') {
-        result.error = data.error || '视频生成失败';
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error(`[YunwuAPI] 查询状态失败:`, error);
-      throw new Error(`云雾API状态查询失败: ${error.message}`);
+    const modelEndpoint = this.modelEndpoints[model];
+    if (!modelEndpoint) {
+      throw new Error(`不支持的模型: ${model}`);
     }
+
+    // ✅ 使用 logAPICall 记录API调用
+    return logAPICall(
+      'yunwuapiCheckStatus',
+      async () => {
+        // 通过本地代理调用
+        const response = await fetch(`${this.config.baseUrl}${this.config.endpoints.status}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiKey
+          },
+          body: JSON.stringify({
+            model: modelEndpoint.submitModel,
+            task_id: taskId
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        console.log('[YunwuAPI] 状态查询响应:', {
+          taskId,
+          rawStatus: data.status,
+          rawProgress: data.progress,
+          rawProgressPct: data.progress_pct,
+          rawVideoUrl: data.video_url,
+          fullData: data
+        });
+
+        // 映射状态
+        let status: 'queued' | 'processing' | 'completed' | 'error';
+        switch (data.status) {
+          case 'pending':
+          case 'queued':
+            status = 'queued';
+            break;
+          case 'processing':
+          case 'generating':
+            status = 'processing';
+            break;
+          case 'completed':
+          case 'succeeded':
+            status = 'completed';
+            break;
+          case 'failed':
+          case 'error':
+            status = 'error';
+            break;
+          default:
+            status = 'processing';
+        }
+
+        const progress = data.progress || data.progress_pct || 0;
+
+        console.log('[YunwuAPI] 映射后的状态:', {
+          taskId,
+          mappedStatus: status,
+          mappedProgress: progress,
+          videoUrl: data.video_url
+        });
+
+        const result: VideoGenerationResult = {
+          taskId,
+          status,
+          progress: progress
+        };
+
+        if (status === 'completed') {
+          result.videoUrl = data.video_url;
+          result.videoDuration = data.duration;
+          result.videoResolution = data.resolution;
+          result.coverUrl = data.cover_url;
+          console.log('[YunwuAPI] 任务完成，视频URL:', data.video_url);
+        }
+
+        if (status === 'error') {
+          result.error = data.error || '视频生成失败';
+        }
+
+        return result;
+      },
+      {
+        model: modelEndpoint.submitModel,
+        options: { taskId }
+      },
+      {
+        nodeId: context?.nodeId,
+        nodeType: context?.nodeType || 'STORYBOARD_VIDEO_GENERATOR',
+        platform: this.platformName,
+        logType: 'polling'
+      }
+    );
   }
 }
 

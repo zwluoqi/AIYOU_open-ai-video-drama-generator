@@ -1066,12 +1066,18 @@ export const generateVideo = async (
         {
             model,
             prompt: prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''),
-            options,
+            options: {
+                aspectRatio: options.aspectRatio,
+                resolution: options.resolution,
+                count: options.count,
+                generationMode: options.generationMode
+            },
             inputs: {
                 hasImage: !!inputImageBase64,
                 hasVideo: !!videoInput,
                 referenceImagesCount: referenceImages?.length || 0
-            }
+            },
+            inputImagesCount: (inputImageBase64 ? 1 : 0) + (referenceImages?.length || 0)
         },
         context
     );

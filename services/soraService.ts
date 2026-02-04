@@ -105,9 +105,12 @@ export async function checkSoraTaskStatus(
   // 获取提供商实例
   const provider = getProvider(providerName);
 
-  console.log(`[SoraService] 使用 ${provider.displayName} 查询任务`, {
+  console.log(`[SoraService] 🔍 使用 ${provider.displayName} 查询任务`, {
     provider: providerName,
     taskId,
+    taskIdType: typeof taskId,
+    taskIdLength: taskId?.length,
+    hasApiKey: !!apiKey,
   });
 
   // 调用提供商的查询方法（不记录到API日志面板，避免日志过多）
@@ -120,13 +123,22 @@ export async function checkSoraTaskStatus(
 export async function pollSoraTaskUntilComplete(
   taskId: string,
   onProgress?: (progress: number) => void,
-  pollingInterval: number = 5000,
+  pollingInterval: number = 10000,  // 10 秒轮询间隔
   context?: { nodeId?: string; nodeType?: string }
 ): Promise<SoraVideoResult> {
   let attempts = 0;
-  const maxAttempts = 240; // 增加到 240 次（20分钟）
+  const maxAttempts = 240; // 240 次 × 10 秒 = 40 分钟
+
+  console.log('[Sora Service] 🚀 开始轮询任务:', {
+    taskId,
+    taskIdType: typeof taskId,
+    taskIdLength: taskId?.length,
+    maxAttempts,
+    pollingInterval
+  });
 
   while (attempts < maxAttempts) {
+    console.log(`[Sora Service] 📞 第 ${attempts + 1}/${maxAttempts} 次查询, taskId:`, taskId);
     const result = await checkSoraTaskStatus(taskId, onProgress, context);
 
     console.log('[Sora Service] Polling result:', {
@@ -134,7 +146,8 @@ export async function pollSoraTaskUntilComplete(
       taskId,
       status: result.status,
       progress: result.progress,
-      hasVideoUrl: !!result.videoUrl
+      hasVideoUrl: !!result.videoUrl,
+      resultTaskId: result.taskId
     });
 
     // 支持多种完成状态
@@ -213,6 +226,16 @@ export async function generateSoraVideo(
   context?: { nodeId?: string; nodeType?: string }
 ): Promise<SoraVideoResult> {
   try {
+    console.log('[Sora Service] 🔍 任务组检查:', {
+      taskGroupId: taskGroup.id,
+      taskNumber: taskGroup.taskNumber,
+      generationStatus: taskGroup.generationStatus,
+      hasReferenceImage: !!taskGroup.referenceImage,
+      referenceImageType: taskGroup.referenceImage?.startsWith('data:') ? 'base64' : 'url',
+      referenceImageLength: taskGroup.referenceImage?.length,
+      imageFused: taskGroup.imageFused
+    });
+
     // 1. 检查是否已提交过任务
     if (taskGroup.soraTaskId && taskGroup.generationStatus === 'generating') {
       onProgress?.(`继续轮询任务 ${taskGroup.soraTaskId}...`, taskGroup.progress || 0);
@@ -245,6 +268,19 @@ export async function generateSoraVideo(
       // 3. 提交新任务
       onProgress?.('正在提交 Sora 2 任务...', 10);
 
+      console.log('[Sora Service] 📤 准备提交任务:', {
+        taskGroupId: taskGroup.id,
+        hasReferenceImageUrl: !!referenceImageUrl,
+        referenceImageUrlType: referenceImageUrl?.startsWith('data:') ? 'base64' : 'url',
+        referenceImageUrlLength: referenceImageUrl?.length,
+        soraPromptLength: taskGroup.soraPrompt?.length
+      });
+
+      if (!referenceImageUrl) {
+        console.warn('[Sora Service] ⚠️ 警告: referenceImageUrl 为空，将不发送参考图到平台！');
+        console.warn('[Sora Service] 💡 提示: 请先执行"融合图"操作以生成参考图');
+      }
+
       const submitResult = await submitSoraTask(
         taskGroup.soraPrompt,
         referenceImageUrl,
@@ -255,6 +291,12 @@ export async function generateSoraVideo(
       console.log('[Sora Service] submitResult:', JSON.stringify(submitResult));
 
       taskGroup.soraTaskId = submitResult.id;
+
+      console.log('[Sora Service] ✅ taskId已保存到taskGroup:', {
+        taskGroupId: taskGroup.id,
+        soraTaskId: taskGroup.soraTaskId,
+        submitResultId: submitResult.id
+      });
 
       if (!taskGroup.soraTaskId) {
         throw new Error('提交任务后未返回有效的任务 ID');
@@ -293,6 +335,14 @@ export async function generateSoraVideo(
       const errorReason = result.violationReason || result.quality || '生成失败，请重试';
       taskGroup.error = `生成失败: ${errorReason}`;
     }
+
+    // ✅ 调试日志：返回前检查result.taskId
+    console.log('[Sora Service] ✅ 准备返回result:', {
+      taskGroupId: taskGroup.id,
+      resultTaskId: result.taskId,
+      taskGroupSoraTaskId: taskGroup.soraTaskId,
+      hasTaskId: !!result.taskId
+    });
 
     return result;
 
@@ -333,7 +383,7 @@ export async function generateMultipleSoraVideos(
     } catch (error: any) {
       console.error(`[Sora Service] Task ${taskGroup.taskNumber} failed:`, error);
       results.set(taskGroup.id, {
-        taskId: taskGroup.id,
+        taskId: taskGroup.soraTaskId || taskGroup.id, // ✅ 优先使用soraTaskId
         status: 'error',
         progress: 0,
         quality: 'error',

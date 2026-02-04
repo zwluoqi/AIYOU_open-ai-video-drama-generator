@@ -414,6 +414,18 @@ export const App = () => {
   useEffect(() => {
     (window as any).__canvasScale = scale;
   }, [scale]);
+
+  // 加载 API 日志查看器（开发调试工具）
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = '/utils/apiLogViewer.js';
+    script.async = true;
+    document.body.appendChild(script);
+
+    // 在控制台显示使用提示
+    console.log('%c🔧 API 日志查看器已加载', 'color: #06b6d4; font-size: 14px; font-weight: bold');
+    console.log('%c可用命令: showAPILogs(), getAPILogStats(), clearAPILogs(), exportAPILogs()', 'color: #6b7280; font-size: 12px');
+  }, []);
   const [croppingNodeId, setCroppingNodeId] = useState<string | null>(null);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
 

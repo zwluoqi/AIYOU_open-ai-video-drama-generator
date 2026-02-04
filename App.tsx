@@ -2010,6 +2010,7 @@ export const App = () => {
                             title: `任务组 ${taskGroup.taskNumber}`,
                             status: NodeStatus.SUCCESS,
                             data: {
+                                parentId: node.id,
                                 taskGroupId: taskGroup.id,
                                 taskNumber: taskGroup.taskNumber,
                                 soraPrompt: taskGroup.soraPrompt,
@@ -2019,7 +2020,7 @@ export const App = () => {
                                 quality: result.quality,
                                 isCompliant: result.isCompliant,
                                 violationReason: result.violationReason,
-                                soraTaskId: result.taskId
+                                provider: taskGroup.provider || 'yunwu'
                             },
                             inputs: [node.id]
                         };
@@ -2095,11 +2096,13 @@ export const App = () => {
                         title: `任务组 ${taskGroup.taskNumber}`,
                         status: NodeStatus.ERROR,
                         data: {
+                            parentId: node.id,
                             taskGroupId: taskGroup.id,
                             taskNumber: taskGroup.taskNumber,
                             soraPrompt: taskGroup.soraPrompt,
                             videoUrl: undefined,
-                            error: errorMessage
+                            error: errorMessage,
+                            provider: taskGroup.provider || 'yunwu'
                         },
                         inputs: [node.id]
                     };
@@ -2202,12 +2205,27 @@ export const App = () => {
               if (promptOverride === 'generate-videos') {
                   console.log('[SORA_VIDEO_GENERATOR] Generating Sora videos for task groups');
 
+                  // ✅ 强制要求：只允许 image_fused 状态的任务组生成视频
                   const taskGroupsToGenerate = taskGroups.filter(tg =>
-                      tg.generationStatus === 'prompt_ready' || tg.generationStatus === 'image_fused'
+                      tg.generationStatus === 'image_fused'
                   );
 
+                  // 检查是否有未融合的任务组，给用户友好提示
+                  const nonFusedGroups = taskGroups.filter((tg: SoraTaskGroup) =>
+                      tg.generationStatus === 'prompt_ready'
+                  );
+
+                  if (nonFusedGroups.length > 0) {
+                      const nonFusedNumbers = nonFusedGroups.map(tg => tg.taskNumber).join(', ');
+                      throw new Error(
+                          `任务组 ${nonFusedNumbers} 尚未融合参考图。\n\n` +
+                          `请先点击"融合图"按钮生成参考图，然后再生成视频。\n\n` +
+                          `融合图能够将多个分镜图合并为一个参考图，提高视频生成质量。`
+                      );
+                  }
+
                   if (taskGroupsToGenerate.length === 0) {
-                      throw new Error('没有可生成的任务组，请先完成提示词生成');
+                      throw new Error('没有可生成的任务组，请先完成提示词生成和图片融合');
                   }
 
                   // Update all task groups to 'uploading' status
@@ -2283,6 +2301,7 @@ export const App = () => {
                               title: `任务组 ${taskGroup.taskNumber}`,
                               status: NodeStatus.SUCCESS,
                               data: {
+                                  parentId: node.id,
                                   taskGroupId: taskGroup.id,
                                   taskNumber: taskGroup.taskNumber,
                                   soraPrompt: taskGroup.soraPrompt,
@@ -2292,7 +2311,7 @@ export const App = () => {
                                   quality: result.quality,
                                   isCompliant: result.isCompliant,
                                   violationReason: result.violationReason,
-                                  soraTaskId: result.taskId
+                                  provider: taskGroup.provider || 'yunwu'
                               },
                               inputs: [node.id]
                           };
@@ -2305,6 +2324,14 @@ export const App = () => {
                   const finalTaskGroups = taskGroups.map(tg => {
                       const result = results.get(tg.id);
                       if (result) {
+                          // ✅ 调试日志
+                          console.log(`[SORA] 🔍 处理任务组 ${tg.taskNumber} 的result:`, {
+                            resultTaskId: result.taskId,
+                            hasTaskId: !!result.taskId,
+                            status: result.status,
+                            taskGroupId: tg.id
+                          });
+
                           // 保留实际的进度值
                           const finalProgress = result.status === 'completed' ? 100 : result.progress;
 
@@ -2322,6 +2349,7 @@ export const App = () => {
 
                           return {
                               ...tg,
+                              soraTaskId: result.taskId,  // ✅ 保存taskId到taskGroup
                               generationStatus: result.status === 'completed' ? 'completed' as const :
                                               result.status === 'error' ? 'failed' as const :
                                               tg.generationStatus,
@@ -2339,6 +2367,18 @@ export const App = () => {
                           };
                       }
                       return tg;
+                  });
+
+                  // ✅ 调试日志：检查每个任务组的taskId
+                  finalTaskGroups.forEach((tg, index) => {
+                    if (tg.soraTaskId) {
+                      console.log(`[SORA] ✅ 任务组 ${tg.taskNumber} taskId已保存:`, tg.soraTaskId);
+                    } else {
+                      console.error(`[SORA] ❌ 任务组 ${tg.taskNumber} 没有taskId!`, {
+                        taskGroupId: tg.id,
+                        generationStatus: tg.generationStatus
+                      });
+                    }
                   });
 
                   // Add child nodes to canvas
@@ -2418,6 +2458,7 @@ export const App = () => {
 
                               return {
                                   ...tg,
+                                  soraTaskId: result.taskId,  // ✅ 保存taskId到taskGroup
                                   generationStatus: result.status === 'completed' ? 'completed' as const :
                                                       result.status === 'error' ? 'failed' as const :
                                                       tg.generationStatus,
@@ -2456,6 +2497,7 @@ export const App = () => {
                                   title: `任务组 ${taskGroup.taskNumber}`,
                                   status: NodeStatus.SUCCESS,
                                   data: {
+                                      parentId: node.id,
                                       taskGroupId: taskGroup.id,
                                       taskNumber: taskGroup.taskNumber,
                                       soraPrompt: taskGroup.soraPrompt,
@@ -2465,7 +2507,7 @@ export const App = () => {
                                       quality: result.quality,
                                       isCompliant: result.isCompliant,
                                       violationReason: result.violationReason,
-                                      soraTaskId: result.taskId
+                                      provider: taskGroup.provider || 'yunwu'
                                   },
                                   inputs: [node.id]
                               };
@@ -2492,6 +2534,119 @@ export const App = () => {
 
                   return;
               }
+          }
+
+          // Handle SORA_VIDEO_CHILD node actions (refresh status)
+          if (node.type === NodeType.SORA_VIDEO_CHILD && promptOverride === 'refresh-status') {
+              const soraTaskId = node.data.soraTaskId;
+              const provider = node.data.provider || 'yunwu';
+              
+              if (!soraTaskId) {
+                  throw new Error('未找到任务ID');
+              }
+
+              console.log('[SORA_VIDEO_CHILD] Refreshing status:', { soraTaskId, provider });
+
+              try {
+                  // Get API key based on provider
+                  const getApiKey = () => {
+                      if (provider === 'yunwu') {
+                          return localStorage.getItem('YUNWU_API_KEY');
+                      } else if (provider === 'sutu') {
+                          return localStorage.getItem('SUTU_API_KEY');
+                      } else if (provider === 'yijiapi') {
+                          return localStorage.getItem('YIJIAPI_API_KEY');
+                      }
+                      return null;
+                  };
+
+                  const apiKey = getApiKey();
+                  if (!apiKey) {
+                      throw new Error('请先配置API Key');
+                  }
+
+                  // Call status API based on provider
+                  let apiUrl: string;
+                  let requestBody: any = { task_id: soraTaskId };
+
+                  if (provider === 'yunwu') {
+                      apiUrl = 'http://localhost:3001/api/yunwuapi/status';
+                      requestBody = { task_id: soraTaskId, model: 'sora-2-all' };
+                  } else if (provider === 'sutu') {
+                      apiUrl = 'http://localhost:3001/api/sutu/query';
+                      requestBody = { id: soraTaskId };
+                  } else if (provider === 'yijiapi') {
+                      apiUrl = `http://localhost:3001/api/yijiapi/query/${encodeURIComponent(soraTaskId)}`;
+                      requestBody = null;
+                  } else {
+                      throw new Error('不支持的provider');
+                  }
+
+                  console.log('[SORA_VIDEO_CHILD] Calling API:', { apiUrl, provider });
+
+                  const response = await fetch(apiUrl, {
+                      method: 'POST',
+                      headers: {
+                          'Content-Type': 'application/json',
+                          'X-API-Key': apiKey
+                      },
+                      body: requestBody ? JSON.stringify(requestBody) : undefined
+                  });
+
+                  if (!response.ok) {
+                      throw new Error(`HTTP ${response.status}`);
+                  }
+
+                  const data = await response.json();
+                  console.log('[SORA_VIDEO_CHILD] API response:', data);
+
+                  // Parse response based on provider
+                  let newVideoUrl: string | undefined;
+                  let newStatus: string;
+                  let newProgress: number;
+                  let newViolationReason: string | undefined;
+
+                  if (provider === 'yunwu') {
+                      newVideoUrl = data.video_url;
+                      newStatus = data.status;
+                      newProgress = data.progress || 0;
+                      if (newStatus === 'error' || newStatus === 'failed') {
+                          newViolationReason = data.error || '视频生成失败';
+                      }
+                  } else if (provider === 'sutu') {
+                      newVideoUrl = data.data?.remote_url || data.data?.video_url;
+                      newStatus = data.data?.status === 'success' ? 'completed' : 'processing';
+                      newProgress = data.data?.status === 'success' ? 100 : 50;
+                  } else if (provider === 'yijiapi') {
+                      newVideoUrl = data.url;
+                      newStatus = data.status === 'completed' ? 'completed' : 'processing';
+                      newProgress = data.progress || (data.status === 'completed' ? 100 : 0);
+                  }
+
+                  // Update node data
+                  const updateData: any = {};
+                  
+                  if (newVideoUrl) {
+                      updateData.videoUrl = newVideoUrl;
+                      updateData.status = newStatus === 'completed' ? NodeStatus.SUCCESS : undefined;
+                      updateData.progress = newProgress;
+                      updateData.violationReason = newViolationReason;
+                      console.log('[SORA_VIDEO_CHILD] ✅ Video updated:', newVideoUrl);
+                  } else if (newStatus === 'processing' || newStatus === 'pending') {
+                      updateData.progress = newProgress;
+                      updateData.violationReason = undefined;
+                      console.log('[SORA_VIDEO_CHILD] Task still processing, progress:', newProgress);
+                  } else if (newViolationReason) {
+                      updateData.violationReason = newViolationReason;
+                      updateData.status = NodeStatus.ERROR;
+                  }
+
+                  handleNodeUpdate(id, updateData);
+              } catch (error: any) {
+                  console.error('[SORA_VIDEO_CHILD] ❌ Refresh failed:', error);
+                  throw new Error(`刷新失败: ${error.message}`);
+              }
+              return;
           }
 
           // Handle SORA_VIDEO_CHILD node actions (save video locally)

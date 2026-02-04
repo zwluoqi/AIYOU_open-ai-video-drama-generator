@@ -23,6 +23,7 @@ import {
   SoraAPIError
 } from './types';
 import { logAPICall } from '../apiLogger';
+import { getSoraModelName } from '../soraModelConfig';
 
 export class KieProvider implements SoraProvider {
   readonly name = 'kie' as const;
@@ -59,10 +60,8 @@ export class KieProvider implements SoraProvider {
   ): Promise<SoraSubmitResult> {
     const config = this.transformConfig(params.config);
 
-    // 选择模型名称：根据是否有参考图片
-    const model = params.referenceImageUrl
-      ? 'sora-2-image-to-video'
-      : 'sora-2-text-to-video';
+    // ✅ 动态获取模型名称（根据提供商和清晰度）
+    const model = getSoraModelName('kie', params.config.hd);
 
     // 构建 input 对象
     const input: any = {

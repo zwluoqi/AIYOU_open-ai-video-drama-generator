@@ -987,6 +987,288 @@ app.get('/api/kie/query', async (req, res) => {
 // ============================================================================
 
 /**
+ * ==================== 速推API代理 ====================
+ */
+
+/**
+ * 速推API代理 - 创建任务
+ * POST /api/sutu/create
+ */
+app.post('/api/sutu/create', async (req, res) => {
+  const startTime = Date.now();
+  const logId = `sutu-submit-${Date.now()}`;
+
+  try {
+    // 从请求头获取 API Key
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) {
+      console.error(`[${logId}] ❌ 缺少 API Key`);
+      return res.status(401).json({
+        success: false,
+        error: '缺少 API Key，请在请求头中提供 X-API-Key'
+      });
+    }
+
+    const requestBody = req.body;
+
+    console.log(`[${logId}] 📋 速推API 代理请求:`, {
+      hasPrompt: !!requestBody.prompt,
+      promptLength: requestBody.prompt?.length,
+      hasUrl: !!requestBody.url,
+      model: requestBody.model,
+      aspectRatio: requestBody.aspectRatio,
+      duration: requestBody.duration
+    });
+
+    // 调用速推API
+    const formData = new URLSearchParams();
+    formData.append('prompt', requestBody.prompt);
+    if (requestBody.url) {
+      formData.append('url', requestBody.url);
+    }
+    if (requestBody.aspectRatio) {
+      formData.append('aspectRatio', requestBody.aspectRatio);
+    }
+    if (requestBody.duration) {
+      formData.append('duration', requestBody.duration);
+    }
+    if (requestBody.size) {
+      formData.append('size', requestBody.size);
+    }
+
+    const response = await fetch('https://api.wuyinkeji.com/api/sora2-new/submit', {
+      method: 'POST',
+      headers: {
+        'Authorization': apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded;charset:utf-8;'
+      },
+      body: formData.toString()
+    });
+
+    const result = await response.json();
+
+    const durationMs = Date.now() - startTime;
+    console.log(`[${logId}] ✅ 速推API响应 (${durationMs}ms):`, {
+      status: response.status,
+      hasId: !!result.data?.id
+    });
+
+    if (!response.ok || result.code !== 200) {
+      console.error(`[${logId}] ❌ 速推API错误:`, response.status, result);
+      return res.status(response.status || 500).json({
+        success: false,
+        error: result.msg || '速推API创建任务失败',
+        details: result
+      });
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    console.error(`[${logId}] ❌ 速推API代理错误 (${durationMs}ms):`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '速推API代理创建失败'
+    });
+  }
+});
+
+/**
+ * 速推API代理 - 查询任务状态
+ * GET /api/sutu/query?id={taskId}
+ */
+app.get('/api/sutu/query', async (req, res) => {
+  const startTime = Date.now();
+  const logId = `sutu-query-${Date.now()}`;
+
+  try {
+    const taskId = req.query.id;
+
+    if (!taskId) {
+      console.error(`[${logId}] ❌ 缺少任务 ID`);
+      return res.status(400).json({
+        success: false,
+        error: '缺少任务 ID，请在查询参数中提供 id'
+      });
+    }
+
+    // 从请求头获取 API Key
+    const apiKey = req.headers['x-api-key'];
+
+    console.log(`[${logId}] 🔍 查询速推API任务: ${taskId}`);
+
+    // 调用速推API
+    const response = await fetch(`https://api.wuyinkeji.com/api/sora2/detail?id=${taskId}&key=${apiKey}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded;charset:utf-8;'
+      }
+    });
+
+    const result = await response.json();
+
+    const durationMs = Date.now() - startTime;
+    console.log(`[${logId}] ✅ 速推API查询响应 (${durationMs}ms):`, {
+      status: result.data?.status,
+      hasVideoUrl: !!result.data?.remote_url
+    });
+
+    if (!response.ok) {
+      console.error(`[${logId}] ❌ 速推API查询错误:`, response.status);
+      return res.status(response.status).json({
+        success: false,
+        error: '速推API查询失败'
+      });
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    console.error(`[${logId}] ❌ 速推API查询错误 (${durationMs}ms):`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '速推API查询失败'
+    });
+  }
+});
+
+/**
+ * ==================== 一加API代理 ====================
+ */
+
+/**
+ * 一加API代理 - 创建任务
+ * POST /api/yijiapi/create
+ */
+app.post('/api/yijiapi/create', async (req, res) => {
+  const startTime = Date.now();
+  const logId = `yijiapi-submit-${Date.now()}`;
+
+  try {
+    // 从请求头获取 API Key
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) {
+      console.error(`[${logId}] ❌ 缺少 API Key`);
+      return res.status(401).json({
+        success: false,
+        error: '缺少 API Key，请在请求头中提供 X-API-Key'
+      });
+    }
+
+    const requestBody = req.body;
+
+    console.log(`[${logId}] 📋 一加API代理请求:`, {
+      model: requestBody.model,
+      size: requestBody.size,
+      hasPrompt: !!requestBody.prompt,
+      promptLength: requestBody.prompt?.length,
+      hasReferenceImage: !!requestBody.input_reference
+    });
+
+    // 调用一加API
+    const response = await fetch('https://ai.yijiarj.cn/v1/videos', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const result = await response.json();
+
+    const durationMs = Date.now() - startTime;
+    console.log(`[${logId}] ✅ 一加API响应 (${durationMs}ms):`, {
+      status: response.status,
+      hasId: !!result.id
+    });
+
+    if (!response.ok) {
+      console.error(`[${logId}] ❌ 一加API错误:`, response.status, result);
+      return res.status(response.status).json({
+        success: false,
+        error: result.error || '一加API创建任务失败'
+      });
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    console.error(`[${logId}] ❌ 一加API代理错误 (${durationMs}ms):`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '一加API代理创建失败'
+    });
+  }
+});
+
+/**
+ * 一加API代理 - 查询任务状态
+ * GET /api/yijiapi/query/{taskId}
+ */
+app.get('/api/yijiapi/query/:taskId', async (req, res) => {
+  const startTime = Date.now();
+  const logId = `yijiapi-query-${Date.now()}`;
+
+  try {
+    const { taskId } = req.params;
+
+    if (!taskId) {
+      console.error(`[${logId}] ❌ 缺少任务 ID`);
+      return res.status(400).json({
+        success: false,
+        error: '缺少任务 ID'
+      });
+    }
+
+    // 从请求头获取 API Key
+    const apiKey = req.headers['x-api-key'];
+
+    console.log(`[${logId}] 🔍 查询一加API任务: ${taskId}`);
+
+    // 调用一加API
+    const response = await fetch(`https://ai.yijiarj.cn/v1/videos/${taskId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const result = await response.json();
+
+    const durationMs = Date.now() - startTime;
+    console.log(`[${logId}] ✅ 一加API查询响应 (${durationMs}ms):`, {
+      status: result.status,
+      progress: result.progress,
+      hasUrl: !!result.url
+    });
+
+    if (!response.ok) {
+      console.error(`[${logId}] ❌ 一加API查询错误:`, response.status);
+      return res.status(response.status).json({
+        success: false,
+        error: '一加API查询失败'
+      });
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    console.error(`[${logId}] ❌ 一加API查询错误 (${durationMs}ms):`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '一加API查询失败'
+    });
+  }
+});
+
+/**
  * 云雾API平台 - 提交视频生成任务
  * POST /api/yunwuapi/create
  * 支持多模型: veo, luma, runway, minimax, volcengine, grok, qwen, sora
@@ -1208,42 +1490,50 @@ app.post('/api/yunwuapi/status', async (req, res) => {
     console.log(`[${logId}] 🔍 字段检查:`, {
       'data.id': data.id,
       'data.status': data.status,
-      'data.video_url': data.video_url,
-      'data.enhanced_prompt': data.enhanced_prompt?.substring(0, 50),
+      'data.detail.status': data.detail?.status,
+      'data.detail.progress_pct': data.detail?.progress_pct,
+      'data.detail.video_url': data.detail?.video_url,
+      'data.detail.output?.media_url': data.detail?.output?.media_url,
       'data.status_update_time': data.status_update_time,
     });
     
-    // 云雾API返回扁平结构：{ id, status, video_url, enhanced_prompt, status_update_time }
-    // 注意：云雾API没有progress字段，需要根据status推断进度
-    const actualStatus = data.status || 'pending';
+    // 云雾API返回嵌套结构：{ id, detail: { status, progress_pct, video_url, ... }, status, ... }
+    // 优先从 detail 字段读取实际状态和进度
+    const detail = data.detail || {};
+    const actualStatus = detail.status || data.status || 'pending';
     
-    // 根据状态推断进度（云雾API没有progress字段）
-    let inferredProgress = 0;
-    switch (actualStatus) {
-      case 'pending':
-        inferredProgress = 10;
-        break;
-      case 'processing':
-        inferredProgress = 50;
-        break;
-      case 'completed':
-        inferredProgress = 100;
-        break;
-      case 'failed':
-        inferredProgress = 0;
-        break;
-      default:
-        inferredProgress = 30;
+    // 进度处理：progress_pct 是 0-1 之间的浮点数，转换为 0-100
+    let progress = 0;
+    if (detail.progress_pct !== undefined) {
+      progress = Math.round(detail.progress_pct * 100);
+    } else {
+      // 如果没有 progress_pct，根据状态推断进度
+      switch (actualStatus) {
+        case 'pending':
+          progress = 10;
+          break;
+        case 'processing':
+          progress = 50;
+          break;
+        case 'completed':
+          progress = 100;
+          break;
+        case 'failed':
+          progress = 0;
+          break;
+        default:
+          progress = 30;
+      }
     }
     
-    // 提取视频URL（云雾API使用 video_url 字段）
-    const videoUrl = data.video_url;
+    // 提取视频URL（优先从 detail.video_url，其次从 detail.output?.media_url）
+    const videoUrl = detail.video_url || detail.output?.media_url || data.video_url;
 
     console.log(`[${logId}] ✅ 云雾API平台 查询响应:`, {
       status: response.status,
       taskId: data.id || task_id,
       taskStatus: actualStatus,
-      inferredProgress: inferredProgress,
+      progress: progress,
       hasVideo: !!videoUrl,
       videoUrl: videoUrl || '(none)',
       duration: `${durationMs}ms`,
@@ -1260,7 +1550,6 @@ app.post('/api/yunwuapi/status', async (req, res) => {
 
     // 统一响应格式
     let taskStatus = actualStatus;
-    const progress = inferredProgress;
 
     // 统一状态值：将 succeeded 映射为 completed
     if (taskStatus === 'succeeded') {
@@ -1272,10 +1561,10 @@ app.post('/api/yunwuapi/status', async (req, res) => {
       status: taskStatus,
       progress: progress,
       video_url: videoUrl,
-      duration: data.duration,
-      resolution: data.resolution,
-      cover_url: data.cover_url,
-      error: taskStatus === 'failed' ? (data.error || '视频生成失败') : undefined
+      duration: detail.duration || data.duration,
+      resolution: detail.resolution || data.resolution,
+      cover_url: detail.cover_url || data.cover_url,
+      error: taskStatus === 'failed' ? (detail.failure_reason || data.error || '视频生成失败') : undefined
     };
 
     res.json(result);
