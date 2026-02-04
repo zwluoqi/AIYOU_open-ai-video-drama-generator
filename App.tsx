@@ -2254,41 +2254,59 @@ export const App = () => {
                       { nodeId: id, nodeType: node.type }
                   );
 
-                  // Create child nodes for completed videos
+                  // Create child nodes for all task groups (completed, failed, or generating)
                   const newChildNodes: AppNode[] = [];
                   const newConnections: Connection[] = [];
 
                   // 使用 for...of 循环以支持 await
                   for (const [index, result] of results.entries()) {
                       const taskGroup = taskGroupsToGenerate[index];
-                      if (result.status === 'completed' && result.videoUrl) {
-                          // 不保存到IndexedDB，直接使用 Sora URL
-                          saveVideoToDatabase(result.videoUrl, result.taskId, taskGroup.taskNumber, taskGroup.soraPrompt);
 
-                          // 🚀 保存视频到本地文件系统
-                          try {
-                              const { getFileStorageService } = await import('./services/storage/index');
-                              const service = getFileStorageService();
+                      // ✅ 为所有有 taskId 的任务组创建子节点（不管状态如何）
+                      if (result.taskId) {
+                          let savedToLocalStorage = false;
 
-                              if (service.isEnabled()) {
-                                  // 使用 prefix 参数添加任务组 ID，便于后续查找
-                                  const saveResult = await service.saveFile(
-                                      'default',
-                                      id, // 使用父节点 ID
-                                      'SORA_VIDEO_GENERATOR',
-                                      result.videoUrl,
-                                      {
-                                          updateMetadata: true,
-                                          prefix: `sora-video-${taskGroup.id}` // 文件名前缀
+                          // 只有成功完成且有视频URL时才保存视频
+                          if (result.status === 'completed' && result.videoUrl) {
+                              // 不保存到IndexedDB，直接使用 Sora URL
+                              saveVideoToDatabase(result.videoUrl, result.taskId, taskGroup.taskNumber, taskGroup.soraPrompt);
+
+                              // 🚀 保存视频到本地文件系统
+                              try {
+                                  const { getFileStorageService } = await import('./services/storage/index');
+                                  const service = getFileStorageService();
+
+                                  if (service.isEnabled()) {
+                                      // 使用 prefix 参数添加任务组 ID，便于后续查找
+                                      const saveResult = await service.saveFile(
+                                          'default',
+                                          id, // 使用父节点 ID
+                                          'SORA_VIDEO_GENERATOR',
+                                          result.videoUrl,
+                                          {
+                                              updateMetadata: true,
+                                              prefix: `sora-video-${taskGroup.id}` // 文件名前缀
+                                          }
+                                      );
+
+                                      if (saveResult.success) {
+                                          console.log('[Sora2] ✅ 视频已保存到本地:', taskGroup.taskNumber, saveResult.relativePath);
+                                          savedToLocalStorage = true;
                                       }
-                                  );
-
-                                  if (saveResult.success) {
-                                      console.log('[Sora2] ✅ 视频已保存到本地:', taskGroup.taskNumber, saveResult.relativePath);
                                   }
+                              } catch (error) {
+                                  console.error('[Sora2] 保存视频到本地失败:', error);
                               }
-                          } catch (error) {
-                              console.error('[Sora2] 保存视频到本地失败:', error);
+                          }
+
+                          // 根据状态确定子节点状态
+                          let childNodeStatus: NodeStatus;
+                          if (result.status === 'completed') {
+                              childNodeStatus = NodeStatus.SUCCESS;
+                          } else if (result.status === 'error' || result.status === 'failed') {
+                              childNodeStatus = NodeStatus.ERROR;
+                          } else {
+                              childNodeStatus = NodeStatus.WORKING; // 仍在生成中
                           }
 
                           // Create child node
@@ -2299,7 +2317,7 @@ export const App = () => {
                               x: node.x + (node.width || 420) + 50,
                               y: node.y + (index * 150),
                               title: `任务组 ${taskGroup.taskNumber}`,
-                              status: NodeStatus.SUCCESS,
+                              status: childNodeStatus,
                               data: {
                                   parentId: node.id,
                                   taskGroupId: taskGroup.id,
@@ -2311,12 +2329,16 @@ export const App = () => {
                                   quality: result.quality,
                                   isCompliant: result.isCompliant,
                                   violationReason: result.violationReason,
-                                  provider: taskGroup.provider || 'yunwu'
+                                  provider: taskGroup.provider || 'yunwu',
+                                  locallySaved: savedToLocalStorage
                               },
                               inputs: [node.id]
                           };
                           newChildNodes.push(childNode);
                           newConnections.push({ from: node.id, to: childNodeId });
+                          console.log(`[Sora2] ✅ 创建子节点: 任务组 ${taskGroup.taskNumber}, 状态: ${result.status}`);
+                      } else {
+                          console.warn(`[Sora2] ⚠️ 任务组 ${taskGroup.taskNumber} 没有 taskId，跳过创建子节点`);
                       }
                   }
 

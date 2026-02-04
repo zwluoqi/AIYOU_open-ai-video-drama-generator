@@ -4299,15 +4299,11 @@ const NodeComponent: React.FC<NodeProps> = ({
                      )}
 
                      {/* Status */}
-                     {locallySaved ? (
+                     {locallySaved && (
                          <div className="text-center py-2 px-3 bg-green-500/20 rounded-lg border border-green-500/30">
                              <span className="text-sm text-green-300 font-bold">✓ 已保存到本地</span>
                          </div>
-                     ) : !videoUrl ? (
-                         <div className="text-center py-2 px-3 bg-slate-500/20 rounded-lg border border-slate-500/30">
-                             <span className="text-sm text-slate-400">点击刷新状态重新查询</span>
-                         </div>
-                     ) : null}
+                     )}
                  </div>
              </div>
          );
