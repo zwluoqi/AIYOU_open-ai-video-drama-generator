@@ -3740,10 +3740,11 @@ const NodeComponent: React.FC<NodeProps> = ({
      }
 
      // STORYBOARD_VIDEO_GENERATOR 和 SORA_VIDEO_GENERATOR 在特定状态下始终显示底部操作栏
-     // PROMPT_INPUT 始终显示操作栏（方便编辑文字和生图）
+     // PROMPT_INPUT 和 IMAGE_GENERATOR 始终显示操作栏（方便编辑）
      const isAlwaysOpen = (node.type === NodeType.STORYBOARD_VIDEO_GENERATOR && (node.data as any).status === 'prompting') ||
                           (node.type === NodeType.SORA_VIDEO_GENERATOR && (node.data as any).taskGroups && (node.data as any).taskGroups.length > 0) ||
-                          node.type === NodeType.PROMPT_INPUT;
+                          node.type === NodeType.PROMPT_INPUT ||
+                          node.type === NodeType.IMAGE_GENERATOR;
      const isOpen = isAlwaysOpen || (isHovered || isInputFocused);
 
      // 获取当前画布缩放比例，用于反向缩放底部操作栏以保持按钮可点击

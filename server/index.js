@@ -422,13 +422,43 @@ app.post('/api/yunwu/create', async (req, res) => {
 
     const { prompt, images, model, orientation, duration, size, watermark } = req.body;
 
+    // 防御性检查:验证必需字段
+    if (!prompt) {
+      console.error(`[${logId}] ❌ 缺少 prompt 参数`);
+      return res.status(400).json({
+        success: false,
+        error: '缺少 prompt 参数',
+        receivedBody: req.body
+      });
+    }
+
+    if (!orientation) {
+      console.error(`[${logId}] ❌ 缺少 orientation 参数`);
+      return res.status(400).json({
+        success: false,
+        error: '缺少 orientation 参数',
+        receivedBody: req.body
+      });
+    }
+
+    if (duration === undefined || duration === null) {
+      console.error(`[${logId}] ❌ 缺少 duration 参数`);
+      return res.status(400).json({
+        success: false,
+        error: '缺少 duration 参数',
+        receivedBody: req.body
+      });
+    }
+
     console.log(`[${logId}] 📤 云雾 API 提交任务:`, {
       prompt: prompt?.substring(0, 100) + '...',
       hasImages: !!images?.length,
+      imagesCount: images?.length || 0,
       orientation,
       duration,
       size,
       watermark,
+      model,
       apiKeyPrefix: apiKey.substring(0, 10) + '...',
     });
 
@@ -446,14 +476,24 @@ app.post('/api/yunwu/create', async (req, res) => {
     console.log(`[${logId}] 📋 发送到云雾 API 的请求体:`, JSON.stringify(yunwuRequestBody, null, 2));
     console.log(`[${logId}] 🌐 请求 URL: https://yunwu.ai/v1/video/create`);
 
-    const response = await fetch('https://yunwu.ai/v1/video/create', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(yunwuRequestBody),
-    });
+    let response;
+    try {
+      response = await fetch('https://yunwu.ai/v1/video/create', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(yunwuRequestBody),
+      });
+    } catch (fetchError) {
+      console.error(`[${logId}] ❌ 请求云雾 API 失败:`, fetchError);
+      return res.status(500).json({
+        success: false,
+        error: `请求云雾 API 失败: ${fetchError.message}`,
+        details: fetchError.toString()
+      });
+    }
 
     const responseText = await response.text();
     const durationMs = Date.now() - startTime;
@@ -461,7 +501,7 @@ app.post('/api/yunwu/create', async (req, res) => {
     console.log(`[${logId}] 📥 云雾 API 原始响应:`, {
       status: response.status,
       statusText: response.statusText,
-      responseText: responseText.substring(0, 500),
+      responseText: responseText.substring(0, 1000),
       duration: `${durationMs}ms`,
     });
 
@@ -470,14 +510,20 @@ app.post('/api/yunwu/create', async (req, res) => {
       data = JSON.parse(responseText);
     } catch (e) {
       console.error(`[${logId}] ❌ 解析响应 JSON 失败:`, e.message);
+      console.error(`[${logId}] 📄 原始响应文本:`, responseText);
       data = { rawResponse: responseText };
     }
 
     if (!response.ok) {
-      console.error(`[${logId}] ❌ 云雾 API 错误:`, response.status, data);
+      console.error(`[${logId}] ❌ 云雾 API 错误:`, {
+        status: response.status,
+        statusText: response.statusText,
+        data,
+        responseText: responseText.substring(0, 500)
+      });
       return res.status(response.status).json({
         success: false,
-        error: data.message || data.error || '云雾 API 提交失败',
+        error: data.message || data.error || data.detail || `云雾 API 错误 (${response.status}): ${response.statusText}`,
         details: data
       });
     }
@@ -493,10 +539,22 @@ app.post('/api/yunwu/create', async (req, res) => {
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    console.error(`[${logId}] ❌ 云雾 API 代理错误 (${durationMs}ms):`, error);
+    console.error(`[${logId}] ❌ 云雾 API 代理错误 (${durationMs}ms):`, {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      toString: error.toString()
+    });
+    console.error(`[${logId}] 📋 错误详情:`, error);
     res.status(500).json({
       success: false,
-      error: error.message || '云雾 API 代理提交失败'
+      error: error.message || '云雾 API 代理提交失败',
+      details: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        toString: error.toString()
+      }
     });
   }
 });
@@ -544,12 +602,33 @@ app.get('/api/yunwu/query', async (req, res) => {
     const durationMs = Date.now() - startTime;
     const detail = data.detail || {};
 
+    // ✅ 修正：云雾 API 的状态和进度在根级别，不是在 detail 对象中
+    const taskStatus = data.status || detail.status;
+    const progress = data.progress || detail.progress_pct || 0;
+
+    // 视频URL可能在不同位置
+    const generations = detail.generations || data.generations || [];
+    const videoUrl = generations[0]?.url || data.video_url || data.url;
+
+    console.log(`[${logId}] 📦 云雾 API 原始查询响应:`, JSON.stringify(data, null, 2));
+    console.log(`[${logId}] 🔍 解析后的数据:`, {
+      hasDetail: !!data.detail,
+      detailKeys: data.detail ? Object.keys(data.detail) : [],
+      rootStatus: data.status,
+      rootProgress: data.progress,
+      detailStatus: detail.status,
+      detailProgressPct: detail.progress_pct,
+      generationsCount: generations.length,
+      hasVideoUrl: !!videoUrl,
+      videoUrl: videoUrl || 'none'
+    });
+
     console.log(`[${logId}] ✅ 云雾 API 查询响应:`, {
       status: response.status,
       taskId: data.id,
-      taskStatus: detail.status,
-      progress: detail.progress_pct,
-      hasVideo: !!(detail.generations && detail.generations[0]?.url),
+      taskStatus,
+      progress,
+      hasVideo: !!videoUrl,
       duration: `${durationMs}ms`,
     });
 

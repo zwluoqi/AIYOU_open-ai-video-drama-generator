@@ -646,7 +646,6 @@ export const App = () => {
   const getNodeNameCN = (type: string) => {
       switch(type) {
           case NodeType.PROMPT_INPUT: return t.nodes.promptInput;
-          case NodeType.IMAGE_GENERATOR: return t.nodes.imageGenerator;
           case NodeType.VIDEO_GENERATOR: return t.nodes.videoGenerator;
           case NodeType.AUDIO_GENERATOR: return t.nodes.audioGenerator;
           case NodeType.VIDEO_ANALYZER: return t.nodes.videoAnalyzer;
@@ -796,7 +795,6 @@ export const App = () => {
                   return getUserDefaultModel('video');
 
               // 图片生成节点
-              case NodeType.IMAGE_GENERATOR:
               case NodeType.STORYBOARD_IMAGE:
                   return getUserDefaultModel('image');
 
@@ -862,7 +860,8 @@ export const App = () => {
       const centerX = (-canvas.pan.x + window.innerWidth/2)/canvas.scale - 210;
       const centerY = (-canvas.pan.y + window.innerHeight/2)/canvas.scale - 180;
       if (type === 'image') {
-          addNode(NodeType.IMAGE_GENERATOR, centerX, centerY, { image: result, prompt, status: NodeStatus.SUCCESS });
+          // IMAGE_GENERATOR removed - images can be added as assets
+          handleAssetGenerated(type, result, prompt || 'Sketch Output');
       } else {
           addNode(NodeType.VIDEO_GENERATOR, centerX, centerY, { videoUri: result, prompt, status: NodeStatus.SUCCESS });
       }
@@ -1750,61 +1749,6 @@ export const App = () => {
               return;
           }
 
-          // Handle PROMPT_INPUT image generation
-          if (node.type === NodeType.PROMPT_INPUT && promptOverride === 'generate-image') {
-              console.log('[handleNodeAction] PROMPT_INPUT: Generating image from text');
-
-              const prompt = node.data.prompt || '';
-              if (!prompt || prompt.trim().length < 10) {
-                  throw new Error('请先输入至少10个字符的描述文字');
-              }
-
-              // 获取用户选择的分辨率和宽高比
-              const resolution = node.data.resolution || '512x512';
-              const aspectRatio = node.data.aspectRatio || '1:1';
-
-              console.log('[PROMPT_INPUT] Image generation config:', {
-                  promptLength: prompt.length,
-                  resolution,
-                  aspectRatio
-              });
-
-              // 调用生图API
-              const { generateImageFromText } = await import('./services/geminiService');
-              const inputImages: string[] = []; // PROMPT_INPUT 暂不支持参考图
-
-              const images = await generateImageFromText(
-                  prompt,
-                  getUserDefaultModel('image'),
-                  inputImages,
-                  {
-                      aspectRatio,
-                      resolution,
-                      count: 1  // 只生成一张图片
-                  },
-                  { nodeId: id, nodeType: node.type }
-              );
-
-              if (images && images.length > 0) {
-                  // 更新节点数据
-                  handleNodeUpdate(id, {
-                      image: images[0],
-                      images: images,
-                      status: NodeStatus.SUCCESS
-                  });
-
-                  // 保存到本地存储
-                  await saveImageNodeOutput(id, images, 'PROMPT_INPUT');
-
-                  console.log('[PROMPT_INPUT] ✓ Image generated successfully');
-              } else {
-                  throw new Error('图片生成失败：未返回图片');
-              }
-
-              setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
-              return;
-          }
-
           // Handle DRAMA_ANALYZER extract action
           if (node.type === NodeType.DRAMA_ANALYZER && promptOverride === 'extract') {
               const selectedFields = node.data.selectedFields || [];
@@ -2065,7 +2009,6 @@ export const App = () => {
                             title: `任务组 ${taskGroup.taskNumber}`,
                             status: NodeStatus.SUCCESS,
                             data: {
-                                parentId: node.id,
                                 taskGroupId: taskGroup.id,
                                 taskNumber: taskGroup.taskNumber,
                                 soraPrompt: taskGroup.soraPrompt,
@@ -2075,7 +2018,7 @@ export const App = () => {
                                 quality: result.quality,
                                 isCompliant: result.isCompliant,
                                 violationReason: result.violationReason,
-                                provider: taskGroup.provider || 'yunwu'
+                                soraTaskId: result.taskId
                             },
                             inputs: [node.id]
                         };
@@ -2151,13 +2094,11 @@ export const App = () => {
                         title: `任务组 ${taskGroup.taskNumber}`,
                         status: NodeStatus.ERROR,
                         data: {
-                            parentId: node.id,
                             taskGroupId: taskGroup.id,
                             taskNumber: taskGroup.taskNumber,
                             soraPrompt: taskGroup.soraPrompt,
                             videoUrl: undefined,
-                            error: errorMessage,
-                            provider: taskGroup.provider || 'yunwu'
+                            error: errorMessage
                         },
                         inputs: [node.id]
                     };
@@ -2260,27 +2201,12 @@ export const App = () => {
               if (promptOverride === 'generate-videos') {
                   console.log('[SORA_VIDEO_GENERATOR] Generating Sora videos for task groups');
 
-                  // ✅ 强制要求：只允许 image_fused 状态的任务组生成视频
                   const taskGroupsToGenerate = taskGroups.filter(tg =>
-                      tg.generationStatus === 'image_fused'
+                      tg.generationStatus === 'prompt_ready' || tg.generationStatus === 'image_fused'
                   );
-
-                  // 检查是否有未融合的任务组，给用户友好提示
-                  const nonFusedGroups = taskGroups.filter((tg: SoraTaskGroup) =>
-                      tg.generationStatus === 'prompt_ready'
-                  );
-
-                  if (nonFusedGroups.length > 0) {
-                      const nonFusedNumbers = nonFusedGroups.map(tg => tg.taskNumber).join(', ');
-                      throw new Error(
-                          `任务组 ${nonFusedNumbers} 尚未融合参考图。\n\n` +
-                          `请先点击"融合图"按钮生成参考图，然后再生成视频。\n\n` +
-                          `融合图能够将多个分镜图合并为一个参考图，提高视频生成质量。`
-                      );
-                  }
 
                   if (taskGroupsToGenerate.length === 0) {
-                      throw new Error('没有可生成的任务组，请先完成提示词生成和图片融合');
+                      throw new Error('没有可生成的任务组，请先完成提示词生成');
                   }
 
                   // Update all task groups to 'uploading' status
@@ -2309,59 +2235,41 @@ export const App = () => {
                       { nodeId: id, nodeType: node.type }
                   );
 
-                  // Create child nodes for all task groups (completed, failed, or generating)
+                  // Create child nodes for completed videos
                   const newChildNodes: AppNode[] = [];
                   const newConnections: Connection[] = [];
 
                   // 使用 for...of 循环以支持 await
                   for (const [index, result] of results.entries()) {
                       const taskGroup = taskGroupsToGenerate[index];
+                      if (result.status === 'completed' && result.videoUrl) {
+                          // 不保存到IndexedDB，直接使用 Sora URL
+                          saveVideoToDatabase(result.videoUrl, result.taskId, taskGroup.taskNumber, taskGroup.soraPrompt);
 
-                      // ✅ 为所有有 taskId 的任务组创建子节点（不管状态如何）
-                      if (result.taskId) {
-                          let savedToLocalStorage = false;
+                          // 🚀 保存视频到本地文件系统
+                          try {
+                              const { getFileStorageService } = await import('./services/storage/index');
+                              const service = getFileStorageService();
 
-                          // 只有成功完成且有视频URL时才保存视频
-                          if (result.status === 'completed' && result.videoUrl) {
-                              // 不保存到IndexedDB，直接使用 Sora URL
-                              saveVideoToDatabase(result.videoUrl, result.taskId, taskGroup.taskNumber, taskGroup.soraPrompt);
-
-                              // 🚀 保存视频到本地文件系统
-                              try {
-                                  const { getFileStorageService } = await import('./services/storage/index');
-                                  const service = getFileStorageService();
-
-                                  if (service.isEnabled()) {
-                                      // 使用 prefix 参数添加任务组 ID，便于后续查找
-                                      const saveResult = await service.saveFile(
-                                          'default',
-                                          id, // 使用父节点 ID
-                                          'SORA_VIDEO_GENERATOR',
-                                          result.videoUrl,
-                                          {
-                                              updateMetadata: true,
-                                              prefix: `sora-video-${taskGroup.id}` // 文件名前缀
-                                          }
-                                      );
-
-                                      if (saveResult.success) {
-                                          console.log('[Sora2] ✅ 视频已保存到本地:', taskGroup.taskNumber, saveResult.relativePath);
-                                          savedToLocalStorage = true;
+                              if (service.isEnabled()) {
+                                  // 使用 prefix 参数添加任务组 ID，便于后续查找
+                                  const saveResult = await service.saveFile(
+                                      'default',
+                                      id, // 使用父节点 ID
+                                      'SORA_VIDEO_GENERATOR',
+                                      result.videoUrl,
+                                      {
+                                          updateMetadata: true,
+                                          prefix: `sora-video-${taskGroup.id}` // 文件名前缀
                                       }
-                                  }
-                              } catch (error) {
-                                  console.error('[Sora2] 保存视频到本地失败:', error);
-                              }
-                          }
+                                  );
 
-                          // 根据状态确定子节点状态
-                          let childNodeStatus: NodeStatus;
-                          if (result.status === 'completed') {
-                              childNodeStatus = NodeStatus.SUCCESS;
-                          } else if (result.status === 'error' || result.status === 'failed') {
-                              childNodeStatus = NodeStatus.ERROR;
-                          } else {
-                              childNodeStatus = NodeStatus.WORKING; // 仍在生成中
+                                  if (saveResult.success) {
+                                      console.log('[Sora2] ✅ 视频已保存到本地:', taskGroup.taskNumber, saveResult.relativePath);
+                                  }
+                              }
+                          } catch (error) {
+                              console.error('[Sora2] 保存视频到本地失败:', error);
                           }
 
                           // Create child node
@@ -2372,9 +2280,8 @@ export const App = () => {
                               x: node.x + (node.width || 420) + 50,
                               y: node.y + (index * 150),
                               title: `任务组 ${taskGroup.taskNumber}`,
-                              status: childNodeStatus,
+                              status: NodeStatus.SUCCESS,
                               data: {
-                                  parentId: node.id,
                                   taskGroupId: taskGroup.id,
                                   taskNumber: taskGroup.taskNumber,
                                   soraPrompt: taskGroup.soraPrompt,
@@ -2384,16 +2291,12 @@ export const App = () => {
                                   quality: result.quality,
                                   isCompliant: result.isCompliant,
                                   violationReason: result.violationReason,
-                                  provider: taskGroup.provider || 'yunwu',
-                                  locallySaved: savedToLocalStorage
+                                  soraTaskId: result.taskId
                               },
                               inputs: [node.id]
                           };
                           newChildNodes.push(childNode);
                           newConnections.push({ from: node.id, to: childNodeId });
-                          console.log(`[Sora2] ✅ 创建子节点: 任务组 ${taskGroup.taskNumber}, 状态: ${result.status}`);
-                      } else {
-                          console.warn(`[Sora2] ⚠️ 任务组 ${taskGroup.taskNumber} 没有 taskId，跳过创建子节点`);
                       }
                   }
 
@@ -2401,14 +2304,6 @@ export const App = () => {
                   const finalTaskGroups = taskGroups.map(tg => {
                       const result = results.get(tg.id);
                       if (result) {
-                          // ✅ 调试日志
-                          console.log(`[SORA] 🔍 处理任务组 ${tg.taskNumber} 的result:`, {
-                            resultTaskId: result.taskId,
-                            hasTaskId: !!result.taskId,
-                            status: result.status,
-                            taskGroupId: tg.id
-                          });
-
                           // 保留实际的进度值
                           const finalProgress = result.status === 'completed' ? 100 : result.progress;
 
@@ -2426,7 +2321,6 @@ export const App = () => {
 
                           return {
                               ...tg,
-                              soraTaskId: result.taskId,  // ✅ 保存taskId到taskGroup
                               generationStatus: result.status === 'completed' ? 'completed' as const :
                                               result.status === 'error' ? 'failed' as const :
                                               tg.generationStatus,
@@ -2444,18 +2338,6 @@ export const App = () => {
                           };
                       }
                       return tg;
-                  });
-
-                  // ✅ 调试日志：检查每个任务组的taskId
-                  finalTaskGroups.forEach((tg, index) => {
-                    if (tg.soraTaskId) {
-                      console.log(`[SORA] ✅ 任务组 ${tg.taskNumber} taskId已保存:`, tg.soraTaskId);
-                    } else {
-                      console.error(`[SORA] ❌ 任务组 ${tg.taskNumber} 没有taskId!`, {
-                        taskGroupId: tg.id,
-                        generationStatus: tg.generationStatus
-                      });
-                    }
                   });
 
                   // Add child nodes to canvas
@@ -2535,7 +2417,6 @@ export const App = () => {
 
                               return {
                                   ...tg,
-                                  soraTaskId: result.taskId,  // ✅ 保存taskId到taskGroup
                                   generationStatus: result.status === 'completed' ? 'completed' as const :
                                                       result.status === 'error' ? 'failed' as const :
                                                       tg.generationStatus,
@@ -2574,7 +2455,6 @@ export const App = () => {
                                   title: `任务组 ${taskGroup.taskNumber}`,
                                   status: NodeStatus.SUCCESS,
                                   data: {
-                                      parentId: node.id,
                                       taskGroupId: taskGroup.id,
                                       taskNumber: taskGroup.taskNumber,
                                       soraPrompt: taskGroup.soraPrompt,
@@ -2584,7 +2464,7 @@ export const App = () => {
                                       quality: result.quality,
                                       isCompliant: result.isCompliant,
                                       violationReason: result.violationReason,
-                                      provider: taskGroup.provider || 'yunwu'
+                                      soraTaskId: result.taskId
                                   },
                                   inputs: [node.id]
                               };
@@ -4950,7 +4830,6 @@ COMPOSITION REQUIREMENTS:
               nodeType={nodes.find(n => n.id === contextMenu?.id)?.type}
               selectedNodeIds={selectedNodeIds}
               nodeTypes={[
-                  NodeType.IMAGE_GENERATOR,
                   NodeType.SCRIPT_PLANNER,
                   NodeType.SCRIPT_EPISODE,
                   NodeType.CHARACTER_NODE,

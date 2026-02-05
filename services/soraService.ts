@@ -67,6 +67,11 @@ export async function submitSoraTask(
     config: params.config,
   });
 
+  // 防御性检查
+  if (!params.config) {
+    throw new Error('params.config 是 undefined，无法提交任务');
+  }
+
   // 调用提供商的提交方法
   return logAPICall(
     'submitSoraTask',
@@ -149,6 +154,18 @@ export async function pollSoraTaskUntilComplete(
       hasVideoUrl: !!result.videoUrl,
       resultTaskId: result.taskId
     });
+
+    // ⚠️ 检查是否返回了无效状态
+    if (!result.status || typeof result.status === 'undefined') {
+      console.error('[Sora Service] ❌ 收到无效状态，停止轮询:', {
+        attempt: attempts + 1,
+        taskId,
+        status: result.status,
+        statusType: typeof result.status,
+        rawData: result._rawData
+      });
+      throw new Error(`API 返回了无效状态。可能是 API Key 无效、任务 ID 不存在，或 API 响应格式已变更。`);
+    }
 
     // 支持多种完成状态
     const isCompleted = result.status === 'completed' ||
