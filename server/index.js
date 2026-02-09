@@ -12,6 +12,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { writeLog } from './logger.js';
+import projectsRouter from './routes/projects.js';
+import nodesRouter from './routes/nodes.js';
+import connectionsRouter from './routes/connections.js';
+import mediaRouter from './routes/media.js';
 
 dotenv.config();
 
@@ -2536,6 +2540,15 @@ app.delete('/api/admin/platforms/:platformId/models/:modelId/submodels/:id', (re
     res.status(500).json({ success: false, error: '删除子模型失败' });
   }
 });
+
+// API 路由
+app.use('/api/projects', projectsRouter);
+app.use('/api/nodes', nodesRouter);
+app.use('/api/connections', connectionsRouter);
+app.use('/api/media', mediaRouter);
+
+// 静态文件：上传的媒体文件
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 /**
  * 404 处理

@@ -1,6 +1,10 @@
 // hooks/useHistory.ts
-import { useState, useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
+import { enablePatches, produceWithPatches, applyPatches, Patch } from 'immer';
 import { AppNode, Connection, Group } from '../types';
+
+// Enable Immer patches support (idempotent, safe to call multiple times)
+enablePatches();
 
 interface HistoryState {
   nodes: AppNode[];
@@ -8,97 +12,186 @@ interface HistoryState {
   groups: Group[];
 }
 
+interface HistoryEntry {
+  patches: Patch[];
+  inversePatches: Patch[];
+}
+
 /**
- * 历史记录管理 Hook
- * 实现撤销/重做功能
+ * Incremental history management using Immer patches.
+ *
+ * Instead of storing full state snapshots via structuredClone (O(n * history_size)),
+ * this records only the diffs (patches) between consecutive states.
+ * Memory usage: O(n + total_patch_size), which is dramatically smaller when
+ * nodes contain large payloads like image data.
+ *
+ * API is backward-compatible with the previous snapshot-based implementation:
+ *   - saveToHistory(nodes, connections, groups)
+ *   - undo() => HistoryState | null
+ *   - redo() => HistoryState | null
+ *   - canUndo / canRedo (boolean getters)
+ *   - clearHistory()
  */
 export function useHistory(maxHistorySize = 50) {
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  const undoStackRef = useRef<HistoryEntry[]>([]);
+  const redoStackRef = useRef<HistoryEntry[]>([]);
+  const currentStateRef = useRef<HistoryState | null>(null);
+  const isUndoRedoRef = useRef(false);
 
   /**
-   * 保存当前状态到历史记录
+   * Save current state to history.
+   * Computes patches between the stored baseline and the new state.
    */
   const saveToHistory = useCallback((
     nodes: AppNode[],
     connections: Connection[],
     groups: Group[]
   ) => {
-    const newState: HistoryState = {
-      nodes: structuredClone(nodes),
-      connections: structuredClone(connections),
-      groups: structuredClone(groups)
-    };
+    const newState: HistoryState = { nodes, connections, groups };
 
-    setHistory(prev => {
-      // 如果当前不在历史记录的末尾,则丢弃后面的记录
-      const newHistory = prev.slice(0, historyIndex + 1);
+    // First call: just store the baseline, no patches to record yet
+    if (!currentStateRef.current) {
+      currentStateRef.current = newState;
+      return;
+    }
 
-      // 添加新状态
-      newHistory.push(newState);
+    // Skip if we are inside an undo/redo operation
+    if (isUndoRedoRef.current) {
+      return;
+    }
 
-      // 限制历史记录大小
-      if (newHistory.length > maxHistorySize) {
-        newHistory.shift();
-        setHistoryIndex(prev => prev); // 保持索引不变
-      } else {
-        setHistoryIndex(newHistory.length - 1);
+    try {
+      const [, patches, inversePatches] = produceWithPatches(
+        currentStateRef.current,
+        (draft) => {
+          draft.nodes = newState.nodes as any;
+          draft.connections = newState.connections as any;
+          draft.groups = newState.groups as any;
+        }
+      );
+
+      // Only push if there are actual changes
+      if (patches.length > 0) {
+        undoStackRef.current = [...undoStackRef.current, { patches, inversePatches }];
+
+        // Trim to max history size
+        if (undoStackRef.current.length > maxHistorySize) {
+          undoStackRef.current = undoStackRef.current.slice(
+            undoStackRef.current.length - maxHistorySize
+          );
+        }
+
+        // Clear redo stack on new action (standard undo/redo behavior)
+        redoStackRef.current = [];
+
+        // Update baseline
+        currentStateRef.current = newState;
       }
-
-      return newHistory;
-    });
-  }, [historyIndex, maxHistorySize]);
+    } catch (error) {
+      // Fallback: update baseline so subsequent saves still work
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('History patch computation failed:', error);
+      }
+      currentStateRef.current = newState;
+    }
+  }, [maxHistorySize]);
 
   /**
-   * 撤销
+   * Undo: apply inverse patches to revert to the previous state.
+   * Returns the restored state, or null if nothing to undo.
    */
   const undo = useCallback((): HistoryState | null => {
-    if (historyIndex <= 0) return null;
+    if (undoStackRef.current.length === 0 || !currentStateRef.current) {
+      return null;
+    }
 
-    const newIndex = historyIndex - 1;
-    setHistoryIndex(newIndex);
-    return history[newIndex];
-  }, [history, historyIndex]);
+    const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
 
-  /**
-   * 重做
-   */
-  const redo = useCallback((): HistoryState | null => {
-    if (historyIndex >= history.length - 1) return null;
+    isUndoRedoRef.current = true;
 
-    const newIndex = historyIndex + 1;
-    setHistoryIndex(newIndex);
-    return history[newIndex];
-  }, [history, historyIndex]);
+    try {
+      const restored = applyPatches(
+        currentStateRef.current,
+        entry.inversePatches
+      ) as HistoryState;
 
-  /**
-   * 清空历史记录
-   */
-  const clearHistory = useCallback(() => {
-    setHistory([]);
-    setHistoryIndex(-1);
+      // Move entry to redo stack
+      redoStackRef.current = [...redoStackRef.current, entry];
+
+      currentStateRef.current = restored;
+      return restored;
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('History undo failed:', error);
+      }
+      return null;
+    } finally {
+      isUndoRedoRef.current = false;
+    }
   }, []);
 
   /**
-   * 获取当前状态
+   * Redo: re-apply patches to restore the next state.
+   * Returns the restored state, or null if nothing to redo.
+   */
+  const redo = useCallback((): HistoryState | null => {
+    if (redoStackRef.current.length === 0 || !currentStateRef.current) {
+      return null;
+    }
+
+    const entry = redoStackRef.current[redoStackRef.current.length - 1];
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+
+    isUndoRedoRef.current = true;
+
+    try {
+      const restored = applyPatches(
+        currentStateRef.current,
+        entry.patches
+      ) as HistoryState;
+
+      // Move entry back to undo stack
+      undoStackRef.current = [...undoStackRef.current, entry];
+
+      currentStateRef.current = restored;
+      return restored;
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('History redo failed:', error);
+      }
+      return null;
+    } finally {
+      isUndoRedoRef.current = false;
+    }
+  }, []);
+
+  /**
+   * Clear all history and reset baseline.
+   */
+  const clearHistory = useCallback(() => {
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    currentStateRef.current = null;
+  }, []);
+
+  /**
+   * Get the current baseline state (if any).
    */
   const getCurrentState = useCallback((): HistoryState | null => {
-    if (historyIndex < 0 || historyIndex >= history.length) return null;
-    return history[historyIndex];
-  }, [history, historyIndex]);
+    return currentStateRef.current;
+  }, []);
 
   return {
-    // 状态
-    history,
-    historyIndex,
-    canUndo: historyIndex > 0,
-    canRedo: historyIndex < history.length - 1,
+    // State (computed from refs for compatibility)
+    canUndo: undoStackRef.current.length > 0,
+    canRedo: redoStackRef.current.length > 0,
 
-    // 操作
+    // Operations
     saveToHistory,
     undo,
     redo,
     clearHistory,
-    getCurrentState
+    getCurrentState,
   };
 }

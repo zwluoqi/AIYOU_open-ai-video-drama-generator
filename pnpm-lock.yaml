@@ -17,6 +17,9 @@ importers:
       '@google/genai':
         specifier: ^1.30.0
         version: 1.39.0
+      immer:
+        specifier: ^11.1.3
+        version: 11.1.3
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
@@ -34,7 +37,7 @@ importers:
         version: 2.4.0(react@19.2.4)
       zustand:
         specifier: ^5.0.10
-        version: 5.0.11(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
+        version: 5.0.11(immer@11.1.3)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
     devDependencies:
       '@sentry/react':
         specifier: ^10.32.1
@@ -856,6 +859,9 @@ packages:
 
   immediate@3.0.6:
     resolution: {integrity: sha512-XXOFtyqDjNDAQxVfYxuF7g9Il/IbWmmlQg2MYKOH8ExIT1qg6xc4zyS3HaEEATgs1btfzxq15ciUiY7gjSXRGQ==}
+
+  immer@11.1.3:
+    resolution: {integrity: sha512-6jQTc5z0KJFtr1UgFpIL3N9XSC3saRaI9PwWtzM2pSqkNGtiNkYY2OSwkOGDK2XcTRcLb1pi/aNkKZz0nxVH4Q==}
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
@@ -1975,6 +1981,8 @@ snapshots:
 
   immediate@3.0.6: {}
 
+  immer@11.1.3: {}
+
   inherits@2.0.4: {}
 
   is-fullwidth-code-point@3.0.0: {}
@@ -2325,7 +2333,8 @@ snapshots:
 
   yallist@3.1.1: {}
 
-  zustand@5.0.11(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4)):
+  zustand@5.0.11(immer@11.1.3)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4)):
     optionalDependencies:
+      immer: 11.1.3
       react: 19.2.4
       use-sync-external-store: 1.6.0(react@19.2.4)
