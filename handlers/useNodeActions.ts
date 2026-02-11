@@ -308,7 +308,7 @@ export function useNodeActions(params: UseNodeActionsParams) {
                   try {
                     // Use AI to generate enhanced prompt with Sora2 builder (includes black screen)
                     const { promptBuilderFactory } = await import('../services/promptBuilders');
-                    const builder = promptBuilderFactory.getByNodeType('SORA_VIDEO_GENERATOR');
+                    const builder = promptBuilderFactory.getByNodeType(NodeType.SORA_VIDEO_GENERATOR);
                     const newPrompt = await builder.build(taskGroup.splitShots, {
                       includeBlackScreen: true,
                       blackScreenDuration: 0.5
@@ -1162,7 +1162,7 @@ export function useNodeActions(params: UseNodeActionsParams) {
 
                   // Use Generic prompt builder for storyboard videos (no black screen)
                   const { promptBuilderFactory } = await import('../services/promptBuilders');
-                  const builder = promptBuilderFactory.getByNodeType('STORYBOARD_VIDEO_GENERATOR');
+                  const builder = promptBuilderFactory.getByNodeType(NodeType.STORYBOARD_VIDEO_GENERATOR);
 
 
                   // Generate prompt using Generic format (no black screen for storyboard videos)
@@ -2822,7 +2822,7 @@ COMPOSITION REQUIREMENTS:
 
               // 4. Generate AI-enhanced Sora prompts for each task group using Sora2 builder (includes black screen)
               const { promptBuilderFactory } = await import('../services/promptBuilders');
-              const sora2Builder = promptBuilderFactory.getByNodeType('SORA_VIDEO_GENERATOR');
+              const sora2Builder = promptBuilderFactory.getByNodeType(NodeType.SORA_VIDEO_GENERATOR);
 
               // Generate prompts asynchronously
               for (const tg of taskGroups) {

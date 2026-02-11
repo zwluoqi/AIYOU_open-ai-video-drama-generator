@@ -10,6 +10,7 @@ import {
   VideoGenerationResult,
   VideoProviderContext,
   VideoProviderError,
+  VideoModelConfig,
 } from './types';
 
 export class KlingVideoProvider implements VideoProvider {

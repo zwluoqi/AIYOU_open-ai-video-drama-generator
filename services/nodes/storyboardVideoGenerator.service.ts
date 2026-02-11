@@ -3,7 +3,7 @@
  * 支持多平台、多模型视频生成
  */
 
-import { AppNode, NodeType, SplitStoryboardShot, StoryboardVideoGeneratorData, StoryboardVideoChildData } from '../../types';
+import { AppNode, NodeType, NodeStatus, SplitStoryboardShot, StoryboardVideoGeneratorData, StoryboardVideoChildData } from '../../types';
 import { BaseNodeService, NodeExecutionContext, NodeExecutionResult } from './baseNode.service';
 import { promptBuilderFactory } from '../promptBuilders';
 import { generateVideoFromStoryboard } from '../videoGenerationService';
@@ -132,7 +132,7 @@ export class StoryboardVideoGeneratorNodeService extends BaseNodeService {
 
 
     // 3. 调用 AI 生成提示词（使用 GenericBuilder，传递风格和对白保留选项）
-    const builder = promptBuilderFactory.getByNodeType('STORYBOARD_VIDEO_GENERATOR');
+    const builder = promptBuilderFactory.getByNodeType(NodeType.STORYBOARD_VIDEO_GENERATOR);
     const prompt = await builder.build(selectedShots, {
       visualStyle: stylePrompt,
       context: `类型：${genre}，背景：${setting}`,
@@ -332,13 +332,11 @@ export class StoryboardVideoGeneratorNodeService extends BaseNodeService {
     const childNode: AppNode = {
       id: childId,
       type: NodeType.STORYBOARD_VIDEO_CHILD,
-      position: {
-        x: parentNode.position.x + 300,
-        y: parentNode.position.y
-      },
+      x: parentNode.x + 300,
+      y: parentNode.y,
       data: childData,
       title: `视频结果 #${(parentData.childNodeIds?.length || 0) + 1}`,
-      status: 'SUCCESS' as const,
+      status: NodeStatus.SUCCESS,
     };
 
     // 添加到画布
