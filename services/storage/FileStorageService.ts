@@ -313,6 +313,16 @@ export class FileStorageService {
   /**
    * 获取工作区所有文件
    */
+  async getFilesByNode(workspaceId: string, nodeId: string): Promise<FileMetadata[]> {
+    if (!this.metadataManager) {
+      return [];
+    }
+    return this.metadataManager.getFilesByNode(nodeId);
+  }
+
+  /**
+   * 获取工作区所有文件
+   */
   async getWorkspaceFiles(workspaceId: string): Promise<FileMetadata[]> {
     if (!this.metadataManager) {
       return [];
