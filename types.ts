@@ -304,7 +304,7 @@ export interface AppNode {
     currentTaskId?: string; // 当前任务ID
 
     // Drama Refined Specifics
-    refinedContent?: string; // 精炼后的剧本内容
+    refinedContent?: string | { characterTags?: string[]; artStyle?: string; [key: string]: any }; // 精炼后的剧本内容
 
     // Style Preset Specifics
     stylePrompt?: string; // 风格预设提示词

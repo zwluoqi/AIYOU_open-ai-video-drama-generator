@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback } from 'react';
-import { AppNode, NodeType, NodeStatus, Connection } from '../types';
+import { AppNode, NodeType, NodeStatus, Connection, SoraTaskGroup, CharacterProfile } from '../types';
 import { useEditorStore } from '../stores/editor.store';
 import { getUserPriority, ModelCategory, getDefaultModel, getUserDefaultModel } from '../services/modelConfig';
 import { getGridConfig, STORYBOARD_RESOLUTIONS } from '../services/storyboardConfig';
@@ -2195,7 +2195,7 @@ export function useNodeActions(params: UseNodeActionsParams) {
           } else if (node.type === NodeType.STORYBOARD_IMAGE) {
               // Check if this is a panel or page regeneration request
               const regeneratePanelIndex = node.data.storyboardRegeneratePanel;
-              const regeneratePageIndex = node.data.storyboardRegeneratePage;
+              const regeneratePageIndex = node.data.storyboardRegeneratePanel;
               const isRegeneratingPanel = typeof regeneratePanelIndex === 'number';
               const isRegeneratingPage = typeof regeneratePageIndex === 'number';
               const isRegenerating = isRegeneratingPanel || isRegeneratingPage;
@@ -2686,7 +2686,7 @@ COMPOSITION REQUIREMENTS:
                           storyboardTotalPages: updatedGrids.length,
                           storyboardShots: extractedShots,
                           storyboardRegeneratePanel: undefined, // Clear both flags
-                          storyboardRegeneratePage: undefined
+                          storyboardRegeneratePanel: undefined
                       });
 
                       // Save to local storage
