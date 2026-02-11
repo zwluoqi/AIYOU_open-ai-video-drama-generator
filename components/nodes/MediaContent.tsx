@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025 光波. All rights reserved.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NodeType, NodeStatus, StoryboardShot, CharacterProfile, DetailedStoryboardShot } from '../../types';
 import { RefreshCw, Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, MoreHorizontal, Wand2, Scaling, FileSearch, Edit, Loader2, Layers, Trash2, X, Upload, Scissors, Film, MousePointerClick, Crop as CropIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripHorizontal, Link, Copy, Monitor, Music, Pause, Volume2, Mic2, BookOpen, ScrollText, Clapperboard, LayoutGrid, Box, User, Users, Save, RotateCcw, Eye, List, Sparkles, ZoomIn, ZoomOut, Minus, Circle, Square, Maximize, Move, RotateCw, TrendingUp, TrendingDown, ArrowRight, ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, Palette, Grid, Grid3X3, MoveHorizontal, ArrowUpDown, Database, ShieldAlert, ExternalLink, Package } from 'lucide-react';
 import { VideoModeSelector, SceneDirectorOverlay } from '../VideoNodeModules';
@@ -540,7 +540,7 @@ export const MediaContent: React.FC<NodeContentContext> = (ctx) => {
 
               onUpdate(node.id, {
                   storyboardShots: updatedShots,
-                  storyboardRegeneratePage: currentPage // Regenerate entire page
+                  storyboardRegeneratePanel: true // Regenerate entire page
               });
 
               // 触发节点执行以开始重新生成
@@ -1436,6 +1436,12 @@ export const MediaContent: React.FC<NodeContentContext> = (ctx) => {
             </div>
           )
       }
+      const toggleAudio = () => {
+          const audio = mediaRef.current as HTMLAudioElement | null;
+          if (!audio) return;
+          if (isPlayingAudio) { audio.pause(); } else { audio.play().catch(() => {}); }
+      };
+
       if (node.type === NodeType.AUDIO_GENERATOR) {
           return (
               <div className="w-full h-full p-6 flex flex-col justify-center items-center relative overflow-hidden group/audio">
@@ -2412,7 +2418,6 @@ export const MediaContent: React.FC<NodeContentContext> = (ctx) => {
                   if (newVideoUrl) {
                       onUpdate(node.id, {
                           videoUrl: newVideoUrl,
-                          status: newStatus === 'completed' ? NodeStatus.SUCCESS : undefined,
                           progress: newProgress,
                           violationReason: newViolationReason
                       });
@@ -2423,8 +2428,7 @@ export const MediaContent: React.FC<NodeContentContext> = (ctx) => {
                       });
                   } else if (newViolationReason) {
                       onUpdate(node.id, {
-                          violationReason: newViolationReason,
-                          status: NodeStatus.ERROR
+                          violationReason: newViolationReason
                       });
                   }
               } catch (error: any) {
@@ -2686,9 +2690,9 @@ export const MediaContent: React.FC<NodeContentContext> = (ctx) => {
 
       const hasContent = node.data.image || node.data.videoUri;
       return (
-        <div className="w-full h-full relative group/media overflow-hidden bg-zinc-900" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+        <div className="w-full h-full relative group/media overflow-hidden bg-zinc-900" onMouseEnter={() => {}} onMouseLeave={() => {}}>
             {!hasContent ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600"><div className="w-20 h-20 rounded-[28px] bg-white/5 border border-white/5 flex items-center justify-center cursor-pointer hover:bg-white/10 hover:scale-105 transition-all duration-300 shadow-inner" onClick={() => fileInputRef.current?.click()}>{isWorking ? <Loader2 className="animate-spin text-cyan-500" size={32} /> : <NodeIcon size={32} className="opacity-50" />}</div><span className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">{isWorking ? "处理中..." : "拖拽或上传"}</span><input type="file" ref={fileInputRef} className="hidden" accept={node.type.includes('VIDEO') ? "video/*" : "image/*"} onChange={node.type.includes('VIDEO') ? handleUploadVideo : handleUploadImage} /></div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600"><div className="w-20 h-20 rounded-[28px] bg-white/5 border border-white/5 flex items-center justify-center cursor-pointer hover:bg-white/10 hover:scale-105 transition-all duration-300 shadow-inner" onClick={() => fileInputRef.current?.click()}>{isWorking ? <Loader2 className="animate-spin text-cyan-500" size={32} /> : <ImageIcon size={32} className="opacity-50" />}</div><span className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">{isWorking ? "处理中..." : "拖拽或上传"}</span><input type="file" ref={fileInputRef} className="hidden" accept={node.type.includes('VIDEO') ? "video/*" : "image/*"} onChange={node.type.includes('VIDEO') ? handleUploadVideo : handleUploadImage} /></div>
             ) : (
                 <>
                     {node.data.image ? 
@@ -2724,7 +2728,7 @@ export const MediaContent: React.FC<NodeContentContext> = (ctx) => {
                         </div>
                     )}
                     {generationMode === 'CUT' && node.data.croppedFrame && <div className="absolute top-4 right-4 w-24 aspect-video bg-black/80 rounded-lg border border-purple-500/50 shadow-xl overflow-hidden z-20 hover:scale-150 transition-transform origin-top-right opacity-0 group-hover:opacity-100 transition-opacity duration-300"><img loading="lazy" src={node.data.croppedFrame} className="w-full h-full object-cover" /></div>}
-                    {generationMode === 'CUT' && !node.data.croppedFrame && hasInputs && inputAssets?.some(a => a.src) && (<div className="absolute top-4 right-4 w-24 aspect-video bg-black/80 rounded-lg border border-purple-500/30 border-dashed shadow-xl overflow-hidden z-20 hover:scale-150 transition-transform origin-top-right flex flex-col items-center justify-center group/preview opacity-0 group-hover:opacity-100 transition-opacity duration-300"><div className="absolute inset-0 bg-purple-500/10 z-10"></div>{(() => { const asset = inputAssets!.find(a => a.src); if (asset?.type === 'video') { return <SecureVideo src={asset.src} className="w-full h-full object-cover opacity-60 bg-zinc-900" muted autoPlay />; } else { return <img loading="lazy" src={asset?.src} className="w-full h-full object-cover opacity-60 bg-zinc-900" />; } })()}<span className="absolute z-20 text-[8px] font-bold text-purple-200 bg-black/50 px-1 rounded">分镜参考</span></div>)}
+                    {generationMode === 'CUT' && !node.data.croppedFrame && (inputAssets && inputAssets.length > 0) && inputAssets?.some(a => a.src) && (<div className="absolute top-4 right-4 w-24 aspect-video bg-black/80 rounded-lg border border-purple-500/30 border-dashed shadow-xl overflow-hidden z-20 hover:scale-150 transition-transform origin-top-right flex flex-col items-center justify-center group/preview opacity-0 group-hover:opacity-100 transition-opacity duration-300"><div className="absolute inset-0 bg-purple-500/10 z-10"></div>{(() => { const asset = inputAssets!.find(a => a.src); if (asset?.type === 'video') { return <SecureVideo src={asset.src} className="w-full h-full object-cover opacity-60 bg-zinc-900" muted autoPlay />; } else { return <img loading="lazy" src={asset?.src} className="w-full h-full object-cover opacity-60 bg-zinc-900" />; } })()}<span className="absolute z-20 text-[8px] font-bold text-purple-200 bg-black/50 px-1 rounded">分镜参考</span></div>)}
                 </>
             )}
             {node.type === NodeType.VIDEO_GENERATOR && generationMode === 'CUT' && (videoBlobUrl || node.data.videoUri) && 

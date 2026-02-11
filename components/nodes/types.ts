@@ -31,7 +31,7 @@ export interface NodeProps {
   onInputReorder?: (nodeId: string, newOrder: string[]) => void;
 
   // Character Node Actions
-  onCharacterAction?: (nodeId: string, action: 'DELETE' | 'SAVE' | 'RETRY' | 'GENERATE_EXPRESSION' | 'GENERATE_THREE_VIEW', charName: string, customPrompt?: { expressionPrompt?: string; threeViewPrompt?: string }) => void | Promise<void>;
+  onCharacterAction?: (nodeId: string, action: 'DELETE' | 'SAVE' | 'RETRY' | 'GENERATE_EXPRESSION' | 'GENERATE_THREE_VIEW' | 'GENERATE_SINGLE', charName: string, customPrompt?: { expressionPrompt?: string; threeViewPrompt?: string }) => void | Promise<void>;
   onViewCharacter?: (character: CharacterProfile) => void;
 
   // Video Editor Action

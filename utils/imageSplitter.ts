@@ -138,7 +138,7 @@ export async function splitMultipleStoryboardImages(
     id: string;
     data: {
       storyboardGridImages?: string[];
-      storyboardGridType?: '9' | '6';
+      storyboardGridType?: string;
       storyboardShots?: any[];
     };
   }>,

@@ -1203,7 +1203,7 @@ export const BottomPanel: React.FC<BottomPanelContext> = (ctx) => {
      }
 
      let models: {l: string, v: string}[] = [];
-     if (node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.SORA_VIDEO_GENERATOR) {
+     if (node.type === NodeType.VIDEO_GENERATOR || (node.type as string) === NodeType.SORA_VIDEO_GENERATOR) {
         models = VIDEO_MODELS.map(m => ({l: m.name, v: m.id}));
      } else if (node.type === NodeType.VIDEO_ANALYZER) {
          models = TEXT_MODELS.map(m => ({l: m.name, v: m.id}));

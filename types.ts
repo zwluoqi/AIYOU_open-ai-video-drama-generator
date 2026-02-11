@@ -214,7 +214,7 @@ export interface AppNode {
     audioUri?: string; // Base64 or Blob URL for Audio Node
     analysis?: string; // Video analysis result
     error?: string;
-    progress?: string;
+    progress?: number;
     aspectRatio?: string; // e.g., '16:9', '4:3'
     resolution?: string; // e.g., '1080p', '4k'
     duration?: number; // Duration in seconds (for Audio/Video)
@@ -380,6 +380,9 @@ export interface AppNode {
     shotCount?: number;
     visualStyle?: string;
     taskId?: string;
+    isEpisodeChild?: boolean;
+    status?: string;
+    shotIndex?: number;
   };
   inputs: string[]; // IDs of nodes this node connects FROM
 }
