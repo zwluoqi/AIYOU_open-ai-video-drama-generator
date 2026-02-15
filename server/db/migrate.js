@@ -1,31 +1,22 @@
 /**
  * AIYOU 数据库迁移脚本
+ * 支持 PostgreSQL (Web) 和 SQLite (Tauri 桌面版)
  * 用法: node db/migrate.js
  */
-import knex from 'knex';
-import dotenv from 'dotenv';
-dotenv.config();
+import { getDB, closeDB } from './index.js';
 
-const db = knex({
-  client: 'pg',
-  connection: {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
-    database: process.env.DB_NAME || 'aiyou',
-  },
-});
+const db = getDB();
+const isSqlite = db.client.config.client === 'better-sqlite3';
 
 async function migrate() {
-  console.log('🔄 开始数据库迁移...');
+  console.log(`🔄 开始数据库迁移... (${isSqlite ? 'SQLite' : 'PostgreSQL'})`);
 
   // projects 表
   if (!(await db.schema.hasTable('projects'))) {
     await db.schema.createTable('projects', (t) => {
       t.uuid('id').primary();
       t.string('title', 255).notNullable().defaultTo('未命名项目');
-      t.jsonb('settings').defaultTo('{}');
+      t.json('settings').defaultTo('{}');
       t.timestamp('created_at').defaultTo(db.fn.now());
       t.timestamp('updated_at').defaultTo(db.fn.now());
     });
@@ -44,8 +35,8 @@ async function migrate() {
       t.float('width').defaultTo(420);
       t.float('height').defaultTo(360);
       t.string('status', 20).defaultTo('IDLE');
-      t.jsonb('data').defaultTo('{}');
-      t.specificType('inputs', 'text[]').defaultTo('{}');
+      t.json('data').defaultTo('{}');
+      t.text('inputs').defaultTo('[]'); // JSON string array (was text[] in PG)
       t.timestamp('created_at').defaultTo(db.fn.now());
       t.timestamp('updated_at').defaultTo(db.fn.now());
       t.index('project_id');
@@ -72,16 +63,16 @@ async function migrate() {
     await db.schema.createTable('media_files', (t) => {
       t.uuid('id').primary();
       t.uuid('node_id').references('id').inTable('nodes').onDelete('CASCADE');
-      t.string('type', 20).notNullable(); // image, video, audio
-      t.string('storage_type', 20).defaultTo('local'); // local, oss
-      t.text('file_path'); // local path or OSS key
-      t.text('url'); // accessible URL
+      t.string('type', 20).notNullable();
+      t.string('storage_type', 20).defaultTo('local');
+      t.text('file_path');
+      t.text('url');
       t.string('mime_type', 50);
       t.bigInteger('file_size').defaultTo(0);
       t.integer('width');
       t.integer('height');
-      t.float('duration'); // video/audio duration in seconds
-      t.jsonb('metadata').defaultTo('{}'); // generation params, model info
+      t.float('duration');
+      t.json('metadata').defaultTo('{}');
       t.timestamp('created_at').defaultTo(db.fn.now());
       t.index('node_id');
       t.index('type');
@@ -100,8 +91,8 @@ async function migrate() {
       t.float('width').defaultTo(600);
       t.float('height').defaultTo(400);
       t.string('color', 20).defaultTo('#3b82f6');
-      t.specificType('node_ids', 'text[]').defaultTo('{}');
-      t.jsonb('data').defaultTo('{}');
+      t.text('node_ids').defaultTo('[]'); // JSON string array (was text[] in PG)
+      t.json('data').defaultTo('{}');
       t.timestamp('created_at').defaultTo(db.fn.now());
       t.index('project_id');
     });
@@ -116,7 +107,7 @@ async function migrate() {
       t.uuid('node_id').references('id').inTable('nodes').onDelete('SET NULL');
       t.string('name', 255).notNullable();
       t.string('role_type', 20).defaultTo('supporting');
-      t.jsonb('profile_data').defaultTo('{}');
+      t.json('profile_data').defaultTo('{}');
       t.text('avatar_url');
       t.timestamp('created_at').defaultTo(db.fn.now());
       t.timestamp('updated_at').defaultTo(db.fn.now());
@@ -126,7 +117,7 @@ async function migrate() {
   }
 
   console.log('✅ 数据库迁移完成');
-  await db.destroy();
+  await closeDB();
 }
 
 migrate().catch((err) => {

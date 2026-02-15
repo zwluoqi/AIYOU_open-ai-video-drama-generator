@@ -1,0 +1,107 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Install server dependencies
+        run: |
+          cd server
+          pnpm install
+
+      - name: Build server sidecar
+        run: node scripts/build-server.js x86_64-pc-windows-msvc
+        env:
+          PATH: ${{ env.PATH }}
+
+      - name: Build Tauri app (Windows)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'AIYOU v__VERSION__'
+          releaseBody: 'AIYOU 桌面版'
+          releaseDraft: true
+          prerelease: false
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Install server dependencies
+        run: |
+          cd server
+          pnpm install
+
+      - name: Build server sidecar
+        run: node scripts/build-server.js
+
+      - name: Build Tauri app (macOS Universal)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'AIYOU v__VERSION__'
+          releaseBody: 'AIYOU 桌面版'
+          releaseDraft: true
+          prerelease: false
+          args: --target universal-apple-darwin
