@@ -6,6 +6,7 @@
 import { LLMProvider, GenerateImageOptions } from './baseProvider';
 import { GeminiProvider } from './geminiProvider';
 import { YunwuProvider } from './yunwuProvider';
+import { CustomGeminiProvider } from './customGeminiProvider';
 import { LLMProviderType } from '../../types';
 
 /**
@@ -17,7 +18,8 @@ class LLMProviderManager {
   constructor() {
     this.providers = new Map<LLMProviderType, LLMProvider>([
       ['gemini', new GeminiProvider()],
-      ['yunwu', new YunwuProvider()]
+      ['yunwu', new YunwuProvider()],
+      ['customGemini', new CustomGeminiProvider()]
     ]);
 
     // 监听 API Key 更新事件
@@ -101,7 +103,12 @@ class LLMProviderManager {
    */
   isCurrentProviderConfigured(): boolean {
     const providerType = this.getCurrentProviderType();
-    const apiKeyKey = providerType === 'gemini' ? 'GEMINI_API_KEY' : 'YUNWU_API_KEY';
+    const apiKeyMap: Record<string, string> = {
+      gemini: 'GEMINI_API_KEY',
+      yunwu: 'YUNWU_API_KEY',
+      customGemini: 'CUSTOM_GEMINI_API_KEY'
+    };
+    const apiKeyKey = apiKeyMap[providerType] || 'GEMINI_API_KEY';
     const apiKey = localStorage.getItem(apiKeyKey);
     return !!(apiKey && apiKey.trim());
   }
@@ -111,7 +118,12 @@ class LLMProviderManager {
    */
   getCurrentProviderApiKey(): string | null {
     const providerType = this.getCurrentProviderType();
-    const apiKeyKey = providerType === 'gemini' ? 'GEMINI_API_KEY' : 'YUNWU_API_KEY';
+    const apiKeyMap: Record<string, string> = {
+      gemini: 'GEMINI_API_KEY',
+      yunwu: 'YUNWU_API_KEY',
+      customGemini: 'CUSTOM_GEMINI_API_KEY'
+    };
+    const apiKeyKey = apiKeyMap[providerType] || 'GEMINI_API_KEY';
     const apiKey = localStorage.getItem(apiKeyKey);
     return apiKey?.trim() || null;
   }
@@ -163,3 +175,4 @@ export const llmProviderManager = new LLMProviderManager();
 export type { LLMProvider, GenerateImageOptions, GenerateContentOptions } from './baseProvider';
 export { GeminiProvider } from './geminiProvider';
 export { YunwuProvider } from './yunwuProvider';
+export { CustomGeminiProvider } from './customGeminiProvider';

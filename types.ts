@@ -14,8 +14,9 @@
  * LLM/图片生成 API 提供商类型
  * - gemini: Google 官方 Gemini API
  * - yunwu: 云雾 API（第三方代理）
+ * - customGemini: 自定义 Gemini API（用户自定义 Base URL）
  */
-export type LLMProviderType = 'gemini' | 'yunwu';
+export type LLMProviderType = 'gemini' | 'yunwu' | 'customGemini';
 
 /**
  * LLM API 配置接口
@@ -24,6 +25,8 @@ export interface LLMProviderConfig {
   provider: LLMProviderType;
   geminiApiKey?: string;
   yunwuApiKey?: string;
+  customGeminiApiKey?: string;
+  customGeminiBaseUrl?: string;
 }
 
 export enum NodeType {
@@ -74,121 +77,121 @@ export interface GridConfig {
 }
 
 export interface StoryboardShot {
-    id: string;
-    subject: string;
-    scene: string;
-    camera: string;
-    lighting: string;
-    dynamics: string;
-    audio: string;
-    style: string;
-    negative: string;
-    imageUrl?: string; // Generated image
-    duration?: number;
+  id: string;
+  subject: string;
+  scene: string;
+  camera: string;
+  lighting: string;
+  dynamics: string;
+  audio: string;
+  style: string;
+  negative: string;
+  imageUrl?: string; // Generated image
+  duration?: number;
 }
 
 // New detailed storyboard shot for episode breakdown
 export interface DetailedStoryboardShot {
-    id: string;
-    shotNumber: number;
-    duration: number; // 3-5 seconds
+  id: string;
+  shotNumber: number;
+  duration: number; // 3-5 seconds
 
-    // Basic info
-    scene: string;
-    characters: string[];
+  // Basic info
+  scene: string;
+  characters: string[];
 
-    // Camera info - 使用标准影视术语
-    shotSize: string; // 景别：大远景/远景/全景/中景/中近景/近景/特写/大特写
-    cameraAngle: string; // 拍摄角度：视平/高位俯拍/低位仰拍/斜拍/越肩/鸟瞰
-    cameraMovement: string; // 运镜方式：固定/横移/俯仰/横摇/升降/轨道推拉/变焦推拉/正跟随/倒跟随/环绕/滑轨横移
+  // Camera info - 使用标准影视术语
+  shotSize: string; // 景别：大远景/远景/全景/中景/中近景/近景/特写/大特写
+  cameraAngle: string; // 拍摄角度：视平/高位俯拍/低位仰拍/斜拍/越肩/鸟瞰
+  cameraMovement: string; // 运镜方式：固定/横移/俯仰/横摇/升降/轨道推拉/变焦推拉/正跟随/倒跟随/环绕/滑轨横移
 
-    // Content
-    visualDescription: string;
-    dialogue: string;
+  // Content
+  visualDescription: string;
+  dialogue: string;
 
-    // Effects
-    visualEffects: string;
-    audioEffects: string;
+  // Effects
+  visualEffects: string;
+  audioEffects: string;
 
-    // Timeline
-    startTime: number;
-    endTime: number;
+  // Timeline
+  startTime: number;
+  endTime: number;
 }
 
 export interface EpisodeStoryboard {
-    episodeTitle: string;
-    totalDuration: number; // seconds
-    totalShots: number;
-    shots: DetailedStoryboardShot[];
-    visualStyle: string;
+  episodeTitle: string;
+  totalDuration: number; // seconds
+  totalShots: number;
+  shots: DetailedStoryboardShot[];
+  visualStyle: string;
 }
 
 // Split storyboard shot with image and detailed description
 export interface SplitStoryboardShot {
-    id: string;
-    shotNumber: number;
-    sourceNodeId: string; // Which STORYBOARD_IMAGE node this came from
-    sourcePage: number; // Which page this came from (0-based)
-    panelIndex: number; // Which panel in the grid (0-8 for 9-grid, 0-5 for 6-grid)
-    splitImage: string; // Base64 of the split individual panel image
+  id: string;
+  shotNumber: number;
+  sourceNodeId: string; // Which STORYBOARD_IMAGE node this came from
+  sourcePage: number; // Which page this came from (0-based)
+  panelIndex: number; // Which panel in the grid (0-8 for 9-grid, 0-5 for 6-grid)
+  splitImage: string; // Base64 of the split individual panel image
 
-    // Resolution metadata
-    sourceResolution?: StoryboardResolution; // Source image resolution
-    sourceDimensions?: { width: number; height: number }; // Source image dimensions
-    splitDimensions?: { width: number; height: number }; // Split panel dimensions
+  // Resolution metadata
+  sourceResolution?: StoryboardResolution; // Source image resolution
+  sourceDimensions?: { width: number; height: number }; // Source image dimensions
+  splitDimensions?: { width: number; height: number }; // Split panel dimensions
 
-    // From DetailedStoryboardShot - 使用标准影视术语
-    scene: string;
-    characters: string[];
-    shotSize: string; // 景别：大远景/远景/全景/中景/中近景/近景/特写/大特写
-    cameraAngle: string; // 拍摄角度：视平/高位俯拍/低位仰拍/斜拍/越肩/鸟瞰
-    cameraMovement: string; // 运镜方式：固定/横移/俯仰/横摇/升降/轨道推拉/变焦推拉/正跟随/倒跟随/环绕/滑轨横移
-    visualDescription: string;
-    dialogue: string;
-    visualEffects: string;
-    audioEffects: string;
-    startTime: number;
-    endTime: number;
-    duration: number;
+  // From DetailedStoryboardShot - 使用标准影视术语
+  scene: string;
+  characters: string[];
+  shotSize: string; // 景别：大远景/远景/全景/中景/中近景/近景/特写/大特写
+  cameraAngle: string; // 拍摄角度：视平/高位俯拍/低位仰拍/斜拍/越肩/鸟瞰
+  cameraMovement: string; // 运镜方式：固定/横移/俯仰/横摇/升降/轨道推拉/变焦推拉/正跟随/倒跟随/环绕/滑轨横移
+  visualDescription: string;
+  dialogue: string;
+  visualEffects: string;
+  audioEffects: string;
+  startTime: number;
+  endTime: number;
+  duration: number;
 }
 
 export interface CharacterProfile {
-    id: string;
-    name: string;
-    alias?: string;
-    roleType?: 'main' | 'supporting'; // 主角 or 配角
-    basicStats?: string; // 26岁, 女...
-    profession?: string;
-    appearance?: string; // Prompt used for generation
-    personality?: string;
-    motivation?: string;
-    values?: string;
-    weakness?: string;
-    relationships?: string;
-    habits?: string;
-    interests?: string;
-    expressionSheet?: string; // Base64 of 9-grid
-    threeViewSheet?: string; // Base64 of 3-view
-    rawProfileData?: any; // The full JSON object from LLM
-    // Stored prompts for regeneration
-    expressionPromptZh?: string;
-    expressionPromptEn?: string;
-    threeViewPromptZh?: string;
-    threeViewPromptEn?: string;
-    // Status tracking
-    status?: 'IDLE' | 'GENERATING' | 'SUCCESS' | 'ERROR';
-    error?: string;
-    isSaved?: boolean;
-    // Individual task statuses
-    profileStatus?: 'PENDING' | 'GENERATING' | 'SUCCESS' | 'FAILED';
-    expressionStatus?: 'PENDING' | 'GENERATING' | 'SUCCESS' | 'FAILED';
-    threeViewStatus?: 'PENDING' | 'GENERATING' | 'SUCCESS' | 'FAILED';
-    // Generation flags
-    isGeneratingExpression?: boolean;
-    isGeneratingThreeView?: boolean;
-    // Individual task errors
-    expressionError?: string;
-    threeViewError?: string;
+  id: string;
+  name: string;
+  alias?: string;
+  roleType?: 'main' | 'supporting'; // 主角 or 配角
+  basicStats?: string; // 26岁, 女...
+  profession?: string;
+  appearance?: string; // Prompt used for generation
+  personality?: string;
+  motivation?: string;
+  values?: string;
+  weakness?: string;
+  relationships?: string;
+  habits?: string;
+  interests?: string;
+  expressionSheet?: string; // Base64 of 9-grid
+  threeViewSheet?: string; // Base64 of 3-view
+  rawProfileData?: any; // The full JSON object from LLM
+  // Stored prompts for regeneration
+  expressionPromptZh?: string;
+  expressionPromptEn?: string;
+  threeViewPromptZh?: string;
+  threeViewPromptEn?: string;
+  // Status tracking
+  status?: 'IDLE' | 'GENERATING' | 'SUCCESS' | 'ERROR';
+  error?: string;
+  isSaved?: boolean;
+  // Individual task statuses
+  profileStatus?: 'PENDING' | 'GENERATING' | 'SUCCESS' | 'FAILED';
+  expressionStatus?: 'PENDING' | 'GENERATING' | 'SUCCESS' | 'FAILED';
+  threeViewStatus?: 'PENDING' | 'GENERATING' | 'SUCCESS' | 'FAILED';
+  // Generation flags
+  isGeneratingExpression?: boolean;
+  isGeneratingThreeView?: boolean;
+  // Individual task errors
+  expressionError?: string;
+  threeViewError?: string;
 }
 
 export interface AppNode {
@@ -217,7 +220,7 @@ export interface AppNode {
     aspectRatio?: string; // e.g., '16:9', '4:3'
     resolution?: string; // e.g., '1080p', '4k'
     duration?: number; // Duration in seconds (for Audio/Video)
-    
+
     // Script Planner Specifics
     scriptTheme?: string;
     scriptGenre?: string;
@@ -242,17 +245,17 @@ export interface AppNode {
     // Character Node Specifics
     extractedCharacterNames?: string[]; // List of names found in script
     characterConfigs?: Record<string, {
-        method: 'AI_AUTO' | 'AI_CUSTOM' | 'LIBRARY';
-        customPrompt?: string;
-        libraryId?: string;
+      method: 'AI_AUTO' | 'AI_CUSTOM' | 'LIBRARY';
+      customPrompt?: string;
+      libraryId?: string;
     }>;
     generatedCharacters?: CharacterProfile[];
 
     // Video Strategies (StoryContinuator, SceneDirector, FrameWeaver, CharacterRef)
-    generationMode?: VideoGenerationMode; 
+    generationMode?: VideoGenerationMode;
     selectedFrame?: string; // Base64 of the specific frame captured from video (Raw)
     croppedFrame?: string; // Base64 of the cropped/edited frame (Final Input)
-    
+
     // Input Management
     sortedInputIds?: string[]; // Order of input nodes for multi-image composition
 
@@ -332,12 +335,12 @@ export interface Workflow {
 
 // New Smart Sequence Types
 export interface SmartSequenceItem {
-    id: string;
-    src: string; // Base64 or URL
-    transition: {
-        duration: number; // 1-6s
-        prompt: string;
-    };
+  id: string;
+  src: string; // Base64 or URL
+  transition: {
+    duration: number; // 1-6s
+    prompt: string;
+  };
 }
 
 // Sora 2 Video Generator Types

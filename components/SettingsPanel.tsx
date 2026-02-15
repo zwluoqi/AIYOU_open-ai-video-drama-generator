@@ -67,6 +67,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
   const [llmProvider, setLlmProvider] = useState<LLMProviderType>('gemini');
   const [yunwuLlmApiKey, setYunwuLlmApiKey] = useState('');
   const [showYunwuLlmApiKey, setShowYunwuLlmApiKey] = useState(false);
+  const [customGeminiApiKey, setCustomGeminiApiKey] = useState('');
+  const [showCustomGeminiApiKey, setShowCustomGeminiApiKey] = useState(false);
+  const [customGeminiBaseUrl, setCustomGeminiBaseUrl] = useState('');
 
   // Sora 配置 state
   const [soraProvider, setSoraProviderState] = useState<SoraProviderType>('sutu');
@@ -134,6 +137,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
     const savedYunwuLlmKey = localStorage.getItem('YUNWU_API_KEY');
     if (savedYunwuLlmKey) {
       setYunwuLlmApiKey(savedYunwuLlmKey);
+    }
+
+    const savedCustomGeminiKey = localStorage.getItem('CUSTOM_GEMINI_API_KEY');
+    if (savedCustomGeminiKey) {
+      setCustomGeminiApiKey(savedCustomGeminiKey);
+    }
+    const savedCustomGeminiBaseUrl = localStorage.getItem('CUSTOM_GEMINI_BASE_URL');
+    if (savedCustomGeminiBaseUrl) {
+      setCustomGeminiBaseUrl(savedCustomGeminiBaseUrl);
     }
 
     // 加载模型优先级配置（视频生成使用Sora2配置）
@@ -225,9 +237,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
     setValidationStatus('idle');
 
     try {
-      const url = llmProvider === 'gemini'
-        ? `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`
-        : `https://yunwu.ai/v1beta/models?key=${key}`;
+      const urlMap: Record<string, string> = {
+        gemini: `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+        yunwu: `https://yunwu.ai/v1beta/models?key=${key}`,
+        customGemini: `${customGeminiBaseUrl.replace(/\/+$/, '') || 'https://generativelanguage.googleapis.com'}/v1beta/models?key=${key}`
+      };
+      const url = urlMap[llmProvider] || urlMap.gemini;
 
       const response = await fetch(url);
 
@@ -252,7 +267,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
 
   // 保存 API Key
   const handleSaveApiKey = async () => {
-    const trimmedKey = llmProvider === 'gemini' ? apiKey.trim() : yunwuLlmApiKey.trim();
+    const trimmedKey = llmProvider === 'gemini' ? apiKey.trim() : llmProvider === 'yunwu' ? yunwuLlmApiKey.trim() : customGeminiApiKey.trim();
 
     if (!trimmedKey) {
       setValidationStatus('error');
@@ -269,8 +284,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
       // 保存对应的 API Key
       if (llmProvider === 'gemini') {
         localStorage.setItem('GEMINI_API_KEY', trimmedKey);
-      } else {
+      } else if (llmProvider === 'yunwu') {
         localStorage.setItem('YUNWU_API_KEY', trimmedKey);
+      } else if (llmProvider === 'customGemini') {
+        localStorage.setItem('CUSTOM_GEMINI_API_KEY', trimmedKey);
+        if (customGeminiBaseUrl.trim()) {
+          localStorage.setItem('CUSTOM_GEMINI_BASE_URL', customGeminiBaseUrl.trim());
+        }
       }
 
       window.dispatchEvent(new CustomEvent('llmProviderUpdated'));
@@ -284,16 +304,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
   const handleClearApiKey = () => {
     if (llmProvider === 'gemini') {
       setApiKey('');
-    } else {
+    } else if (llmProvider === 'yunwu') {
       setYunwuLlmApiKey('');
+    } else if (llmProvider === 'customGemini') {
+      setCustomGeminiApiKey('');
+      setCustomGeminiBaseUrl('');
     }
     setValidationStatus('idle');
     setErrorMessage('');
 
     if (llmProvider === 'gemini') {
       localStorage.removeItem('GEMINI_API_KEY');
-    } else {
+    } else if (llmProvider === 'yunwu') {
       localStorage.removeItem('YUNWU_API_KEY');
+    } else if (llmProvider === 'customGemini') {
+      localStorage.removeItem('CUSTOM_GEMINI_API_KEY');
+      localStorage.removeItem('CUSTOM_GEMINI_BASE_URL');
     }
 
     window.dispatchEvent(new CustomEvent('llmProviderUpdated'));
@@ -373,7 +399,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
 
     const newPriority = [...modelPriorities[category]];
     [newPriority[currentIndex - 1], newPriority[currentIndex]] =
-    [newPriority[currentIndex], newPriority[currentIndex - 1]];
+      [newPriority[currentIndex], newPriority[currentIndex - 1]];
 
     setModelPriorities({
       ...modelPriorities,
@@ -386,7 +412,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
 
     const newPriority = [...modelPriorities[category]];
     [newPriority[currentIndex], newPriority[currentIndex + 1]] =
-    [newPriority[currentIndex + 1], newPriority[currentIndex]];
+      [newPriority[currentIndex + 1], newPriority[currentIndex]];
 
     setModelPriorities({
       ...modelPriorities,
@@ -481,41 +507,37 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
         <div className="relative flex border-b border-white/10">
           <button
             onClick={() => setActiveTab('basic')}
-            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${
-              activeTab === 'basic'
+            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'basic'
                 ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             基础设置
           </button>
           <button
             onClick={() => setActiveTab('models')}
-            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${
-              activeTab === 'models'
+            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'models'
                 ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             模型优先级
           </button>
           <button
             onClick={() => setActiveTab('sora')}
-            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${
-              activeTab === 'sora'
+            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'sora'
                 ? 'text-green-400 border-b-2 border-green-400 bg-white/5'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             Sora 2
           </button>
           <button
             onClick={() => setActiveTab('storage')}
-            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${
-              activeTab === 'storage'
+            className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'storage'
                 ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             存储设置
           </button>
@@ -531,18 +553,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                   <span className="text-sm font-medium text-slate-300">API 提供商</span>
                 </label>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <button
                     onClick={() => {
                       setLlmProvider('gemini');
                       setValidationStatus('idle');
                       setErrorMessage('');
                     }}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      llmProvider === 'gemini'
+                    className={`p-4 rounded-xl border-2 transition-all ${llmProvider === 'gemini'
                         ? 'border-cyan-500 bg-cyan-500/10'
                         : 'border-white/10 hover:border-white/20'
-                    }`}
+                      }`}
                   >
                     <div className="font-bold text-white">Gemini API</div>
                     <div className="text-xs text-slate-400 mt-1">Google 官方接口</div>
@@ -554,14 +575,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                       setValidationStatus('idle');
                       setErrorMessage('');
                     }}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      llmProvider === 'yunwu'
+                    className={`p-4 rounded-xl border-2 transition-all ${llmProvider === 'yunwu'
                         ? 'border-purple-500 bg-purple-500/10'
                         : 'border-white/10 hover:border-white/20'
-                    }`}
+                      }`}
                   >
                     <div className="font-bold text-white">云雾 API</div>
                     <div className="text-xs text-slate-400 mt-1">第三方接口</div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setLlmProvider('customGemini');
+                      setValidationStatus('idle');
+                      setErrorMessage('');
+                    }}
+                    className={`p-4 rounded-xl border-2 transition-all ${llmProvider === 'customGemini'
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : 'border-white/10 hover:border-white/20'
+                      }`}
+                  >
+                    <div className="font-bold text-white">自定义 Gemini</div>
+                    <div className="text-xs text-slate-400 mt-1">自定义接口地址</div>
                   </button>
                 </div>
               </div>
@@ -570,7 +605,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
               <div className="space-y-4">
                 <label className="block">
                   <span className="text-sm font-medium text-slate-300">
-                    {llmProvider === 'gemini' ? 'Gemini API Key' : '云雾 API Key'}
+                    {llmProvider === 'gemini' ? 'Gemini API Key' : llmProvider === 'yunwu' ? '云雾 API Key' : '自定义 Gemini API Key'}
                   </span>
                   <span className="text-xs text-slate-500 ml-2">必填</span>
                 </label>
@@ -634,6 +669,52 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
 
                     <div className="text-xs text-slate-400 space-y-1">
                       <p>• 访问 <a href="https://yunwu.ai" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">云雾官网</a> 获取 API Key</p>
+                      <p>• API Key 将安全地存储在您的浏览器本地,不会上传到任何服务器</p>
+                    </div>
+                  </>
+                )}
+
+                {/* 自定义 Gemini API 配置 */}
+                {llmProvider === 'customGemini' && (
+                  <>
+                    <div className="space-y-3">
+                      <label className="block">
+                        <span className="text-xs font-medium text-slate-400">Base URL</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={customGeminiBaseUrl}
+                        onChange={(e) => setCustomGeminiBaseUrl(e.target.value)}
+                        placeholder="https://generativelanguage.googleapis.com"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:bg-white/10 transition-all font-mono text-sm"
+                      />
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type={showCustomGeminiApiKey ? 'text' : 'password'}
+                        value={customGeminiApiKey}
+                        onChange={(e) => {
+                          setCustomGeminiApiKey(e.target.value);
+                          setValidationStatus('idle');
+                          setErrorMessage('');
+                        }}
+                        placeholder="输入自定义 Gemini API Key"
+                        className="w-full px-4 py-3 pr-12 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:bg-white/10 transition-all font-mono text-sm"
+                      />
+
+                      <button
+                        onClick={() => setShowCustomGeminiApiKey(!showCustomGeminiApiKey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-white transition-colors"
+                        type="button"
+                      >
+                        {showCustomGeminiApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+
+                    <div className="text-xs text-slate-400 space-y-1">
+                      <p>• 填写兼容 Gemini API 格式的自定义接口地址和 API Key</p>
+                      <p>• Base URL 留空则默认使用 Google 官方地址</p>
                       <p>• API Key 将安全地存储在您的浏览器本地,不会上传到任何服务器</p>
                     </div>
                   </>
@@ -771,22 +852,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                               <button
                                 onClick={() => moveModelUp(catKey, index)}
                                 disabled={index === 0}
-                                className={`p-1 rounded transition-all ${
-                                  index === 0
+                                className={`p-1 rounded transition-all ${index === 0
                                     ? 'text-slate-700 cursor-not-allowed'
                                     : 'text-slate-500 hover:text-white hover:bg-white/10'
-                                }`}
+                                  }`}
                               >
                                 <ArrowUp size={14} />
                               </button>
                               <button
                                 onClick={() => moveModelDown(catKey, index)}
                                 disabled={index === priority.length - 1}
-                                className={`p-1 rounded transition-all ${
-                                  index === priority.length - 1
+                                className={`p-1 rounded transition-all ${index === priority.length - 1
                                     ? 'text-slate-700 cursor-not-allowed'
                                     : 'text-slate-500 hover:text-white hover:bg-white/10'
-                                }`}
+                                  }`}
                               >
                                 <ArrowDown size={14} />
                               </button>
@@ -849,10 +928,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                 </select>
                 <p className="text-[10px] text-slate-500">
                   {soraProvider === 'sutu' ? '速创 API：支持 Sora2 标准版和 Pro 版，根据高清开关自动选择' :
-                   soraProvider === 'yunwu' ? '云雾 API：新增接口，稳定性较好' :
-                   soraProvider === 'dayuapi' ? '大洋芋 API：通过模型名称控制参数，支持 10/15/25 秒视频' :
-                   soraProvider === 'kie' ? 'KIE AI API：支持图生视频和文生视频，参数通过 input 对象传递' :
-                   '一加API：支持文生视频，使用 size 参数控制分辨率'}
+                    soraProvider === 'yunwu' ? '云雾 API：新增接口，稳定性较好' :
+                      soraProvider === 'dayuapi' ? '大洋芋 API：通过模型名称控制参数，支持 10/15/25 秒视频' :
+                        soraProvider === 'kie' ? 'KIE AI API：支持图生视频和文生视频，参数通过 input 对象传递' :
+                          '一加API：支持文生视频，使用 size 参数控制分辨率'}
                 </p>
               </div>
 
@@ -1147,7 +1226,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                 </button>
                 <button
                   onClick={handleSaveApiKey}
-                  disabled={isValidating || (!apiKey.trim() && llmProvider === 'gemini') || (!yunwuLlmApiKey.trim() && llmProvider === 'yunwu')}
+                  disabled={isValidating || (!apiKey.trim() && llmProvider === 'gemini') || (!yunwuLlmApiKey.trim() && llmProvider === 'yunwu') || (!customGeminiApiKey.trim() && llmProvider === 'customGemini')}
                   className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 rounded-xl shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isValidating ? (
@@ -1173,11 +1252,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                 </button>
                 <button
                   onClick={handleSaveSoraConfig}
-                  className={`px-6 py-2.5 text-sm font-medium transition-all rounded-xl ${
-                    isSaved
+                  className={`px-6 py-2.5 text-sm font-medium transition-all rounded-xl ${isSaved
                       ? 'bg-green-500 text-white'
                       : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-400 hover:to-emerald-400 shadow-lg hover:shadow-green-500/25'
-                  }`}
+                    }`}
                 >
                   {isSaved ? '✓ 已保存' : '保存配置'}
                 </button>
@@ -1194,11 +1272,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
 
               <button
                 onClick={handleSaveModels}
-                className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${
-                  isSaved
+                className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${isSaved
                     ? 'bg-green-500 text-white'
                     : 'bg-white text-black hover:bg-cyan-400'
-                }`}
+                  }`}
               >
                 {isSaved ? '✓ 已保存' : '保存设置'}
               </button>
