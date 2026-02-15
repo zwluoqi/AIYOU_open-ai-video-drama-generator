@@ -151,13 +151,51 @@ export class CustomGeminiProvider implements LLMProvider {
         // 构建请求内容
         const parts: any[] = [{ text: prompt }];
 
-        // 添加参考图片
+        // 添加参考图片（支持 base64 和 URL 格式）
         if (referenceImages && referenceImages.length > 0) {
-            for (const imageBase64 of referenceImages) {
+            for (const imageSource of referenceImages) {
+                let base64Data: string;
+                let mimeType: string = 'image/jpeg';
+
+                if (imageSource.startsWith('http://') || imageSource.startsWith('https://')) {
+                    // URL 格式：先下载图片再转为 base64
+                    console.log('[CustomGeminiProvider] 参考图片为URL格式，正在下载:', imageSource.substring(0, 100));
+                    try {
+                        const response = await fetch(imageSource);
+                        if (!response.ok) {
+                            console.warn('[CustomGeminiProvider] 下载参考图片失败:', response.status);
+                            continue;
+                        }
+                        const blob = await response.blob();
+                        mimeType = blob.type || 'image/jpeg';
+                        // Blob 转 base64
+                        const arrayBuffer = await blob.arrayBuffer();
+                        const uint8Array = new Uint8Array(arrayBuffer);
+                        let binary = '';
+                        const chunkSize = 8192;
+                        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                            binary += String.fromCharCode(...uint8Array.subarray(i, i + chunkSize));
+                        }
+                        base64Data = btoa(binary);
+                        console.log('[CustomGeminiProvider] 参考图片下载成功, mimeType:', mimeType, 'size:', base64Data.length);
+                    } catch (e) {
+                        console.warn('[CustomGeminiProvider] 下载参考图片异常，跳过:', e);
+                        continue;
+                    }
+                } else if (imageSource.startsWith('data:')) {
+                    // data URI 格式
+                    const match = imageSource.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+                    mimeType = match ? match[1] : 'image/jpeg';
+                    base64Data = imageSource.split(',')[1] || imageSource;
+                } else {
+                    // 纯 base64 字符串
+                    base64Data = imageSource;
+                }
+
                 parts.push({
                     inlineData: {
-                        data: imageBase64.split(',')[1] || imageBase64,
-                        mimeType: 'image/jpeg'
+                        data: base64Data,
+                        mimeType
                     }
                 });
             }

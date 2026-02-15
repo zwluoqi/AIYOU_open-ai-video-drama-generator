@@ -9,15 +9,16 @@ import {
   VideoModelType
 } from './types';
 import { yunwuapiPlatform } from './yunwuapiProvider';
+import { customVideoPlatform } from './customProvider';
 
 /**
  * 平台提供商注册表
  */
 const platformProviders: Record<VideoPlatformType, VideoPlatformProvider> = {
   yunwuapi: yunwuapiPlatform,
+  custom: customVideoPlatform,
   // 未来可以添加更多平台
   // official: officialPlatform,
-  // custom: customPlatform
 };
 
 /**
@@ -107,3 +108,4 @@ export function supportsDuration(
  */
 export * from './types';
 export { yunwuapiPlatform } from './yunwuapiProvider';
+export { customVideoPlatform } from './customProvider';

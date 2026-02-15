@@ -98,6 +98,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
   const [yunwuapiPlatformKey, setYunwuapiPlatformKey] = useState('');
   const [showYunwuapiPlatformKey, setShowYunwuapiPlatformKey] = useState(false);
 
+  // 自定义视频平台 state
+  const [customVideoBaseUrl, setCustomVideoBaseUrl] = useState('');
+  const [customVideoApiKey, setCustomVideoApiKey] = useState('');
+  const [customVideoModel, setCustomVideoModel] = useState('');
+  const [showCustomVideoApiKey, setShowCustomVideoApiKey] = useState(false);
+
   // OSS 测试状态
   const [ossTestState, setOssTestState] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [ossTestMessage, setOssTestMessage] = useState('');
@@ -218,6 +224,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
     if (savedYunwuapiPlatformKey) {
       setYunwuapiPlatformKey(savedYunwuapiPlatformKey);
     }
+
+    // 加载自定义视频平台配置
+    const savedCustomVideoBaseUrl = localStorage.getItem('CUSTOM_VIDEO_BASE_URL');
+    if (savedCustomVideoBaseUrl) setCustomVideoBaseUrl(savedCustomVideoBaseUrl);
+    const savedCustomVideoApiKey = localStorage.getItem('CUSTOM_VIDEO_API_KEY');
+    if (savedCustomVideoApiKey) setCustomVideoApiKey(savedCustomVideoApiKey);
+    const savedCustomVideoModel = localStorage.getItem('CUSTOM_VIDEO_MODEL');
+    if (savedCustomVideoModel) setCustomVideoModel(savedCustomVideoModel);
 
     // 加载 OSS 配置
     const savedOssConfig = getOSSConfig();
@@ -508,8 +522,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
           <button
             onClick={() => setActiveTab('basic')}
             className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'basic'
-                ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
-                : 'text-slate-400 hover:text-slate-200'
+              ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
+              : 'text-slate-400 hover:text-slate-200'
               }`}
           >
             基础设置
@@ -517,8 +531,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
           <button
             onClick={() => setActiveTab('models')}
             className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'models'
-                ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
-                : 'text-slate-400 hover:text-slate-200'
+              ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
+              : 'text-slate-400 hover:text-slate-200'
               }`}
           >
             模型优先级
@@ -526,8 +540,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
           <button
             onClick={() => setActiveTab('sora')}
             className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'sora'
-                ? 'text-green-400 border-b-2 border-green-400 bg-white/5'
-                : 'text-slate-400 hover:text-slate-200'
+              ? 'text-green-400 border-b-2 border-green-400 bg-white/5'
+              : 'text-slate-400 hover:text-slate-200'
               }`}
           >
             Sora 2
@@ -535,8 +549,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
           <button
             onClick={() => setActiveTab('storage')}
             className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${activeTab === 'storage'
-                ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
-                : 'text-slate-400 hover:text-slate-200'
+              ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5'
+              : 'text-slate-400 hover:text-slate-200'
               }`}
           >
             存储设置
@@ -561,8 +575,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                       setErrorMessage('');
                     }}
                     className={`p-4 rounded-xl border-2 transition-all ${llmProvider === 'gemini'
-                        ? 'border-cyan-500 bg-cyan-500/10'
-                        : 'border-white/10 hover:border-white/20'
+                      ? 'border-cyan-500 bg-cyan-500/10'
+                      : 'border-white/10 hover:border-white/20'
                       }`}
                   >
                     <div className="font-bold text-white">Gemini API</div>
@@ -576,8 +590,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                       setErrorMessage('');
                     }}
                     className={`p-4 rounded-xl border-2 transition-all ${llmProvider === 'yunwu'
-                        ? 'border-purple-500 bg-purple-500/10'
-                        : 'border-white/10 hover:border-white/20'
+                      ? 'border-purple-500 bg-purple-500/10'
+                      : 'border-white/10 hover:border-white/20'
                       }`}
                   >
                     <div className="font-bold text-white">云雾 API</div>
@@ -591,8 +605,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                       setErrorMessage('');
                     }}
                     className={`p-4 rounded-xl border-2 transition-all ${llmProvider === 'customGemini'
-                        ? 'border-emerald-500 bg-emerald-500/10'
-                        : 'border-white/10 hover:border-white/20'
+                      ? 'border-emerald-500 bg-emerald-500/10'
+                      : 'border-white/10 hover:border-white/20'
                       }`}
                   >
                     <div className="font-bold text-white">自定义 Gemini</div>
@@ -853,8 +867,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                                 onClick={() => moveModelUp(catKey, index)}
                                 disabled={index === 0}
                                 className={`p-1 rounded transition-all ${index === 0
-                                    ? 'text-slate-700 cursor-not-allowed'
-                                    : 'text-slate-500 hover:text-white hover:bg-white/10'
+                                  ? 'text-slate-700 cursor-not-allowed'
+                                  : 'text-slate-500 hover:text-white hover:bg-white/10'
                                   }`}
                               >
                                 <ArrowUp size={14} />
@@ -863,8 +877,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                                 onClick={() => moveModelDown(catKey, index)}
                                 disabled={index === priority.length - 1}
                                 className={`p-1 rounded transition-all ${index === priority.length - 1
-                                    ? 'text-slate-700 cursor-not-allowed'
-                                    : 'text-slate-500 hover:text-white hover:bg-white/10'
+                                  ? 'text-slate-700 cursor-not-allowed'
+                                  : 'text-slate-500 hover:text-white hover:bg-white/10'
                                   }`}
                               >
                                 <ArrowDown size={14} />
@@ -1129,6 +1143,69 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                   </p>
                 </div>
 
+                {/* 自定义视频平台配置 */}
+                <div className="p-4 bg-black/40 border border-white/10 rounded-xl space-y-3">
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-300">自定义视频平台</span>
+                    <span className="text-xs text-slate-500 ml-2">(兼容 /v1/chat/completions 格式)</span>
+                  </label>
+
+                  {/* Base URL */}
+                  <div>
+                    <span className="text-[11px] text-slate-400 mb-1 block">Base URL</span>
+                    <input
+                      type="text"
+                      value={customVideoBaseUrl}
+                      onChange={(e) => setCustomVideoBaseUrl(e.target.value)}
+                      onBlur={() => localStorage.setItem('CUSTOM_VIDEO_BASE_URL', customVideoBaseUrl)}
+                      placeholder="https://api.example.com"
+                      className="w-full px-4 py-2.5 bg-black/20 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50"
+                    />
+                    <span className="text-[9px] text-slate-500 mt-0.5 block">接口会自动拼接 /v1/chat/completions</span>
+                  </div>
+
+                  {/* API Key */}
+                  <div>
+                    <span className="text-[11px] text-slate-400 mb-1 block">API Key</span>
+                    <div className="flex gap-2">
+                      <div className="flex-1 relative">
+                        <input
+                          type={showCustomVideoApiKey ? 'text' : 'password'}
+                          value={customVideoApiKey}
+                          onChange={(e) => setCustomVideoApiKey(e.target.value)}
+                          onBlur={() => { localStorage.setItem('CUSTOM_VIDEO_API_KEY', customVideoApiKey); saveVideoPlatformApiKey('custom', customVideoApiKey); }}
+                          placeholder="输入 API Key"
+                          className="w-full px-4 py-2.5 bg-black/20 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50"
+                        />
+                        <button
+                          onClick={() => setShowCustomVideoApiKey(!showCustomVideoApiKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                        >
+                          {showCustomVideoApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Model Name */}
+                  <div>
+                    <span className="text-[11px] text-slate-400 mb-1 block">模型名称（可选）</span>
+                    <input
+                      type="text"
+                      value={customVideoModel}
+                      onChange={(e) => setCustomVideoModel(e.target.value)}
+                      onBlur={() => localStorage.setItem('CUSTOM_VIDEO_MODEL', customVideoModel)}
+                      placeholder="留空则自动从 /v1/models 获取"
+                      className="w-full px-4 py-2.5 bg-black/20 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50"
+                    />
+                    <span className="text-[9px] text-slate-500 mt-0.5 block">如不填写，将自动请求 /v1/models 获取可用模型</span>
+                  </div>
+
+                  <p className="text-[10px] text-slate-500">
+                    支持任何兼容 OpenAI Chat Completions 格式的视频生成接口，视频 URL 需在 response content 中返回
+                  </p>
+                </div>
+
                 {/* 提示信息 */}
                 <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
                   <p className="text-[10px] text-slate-400">
@@ -1253,8 +1330,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
                 <button
                   onClick={handleSaveSoraConfig}
                   className={`px-6 py-2.5 text-sm font-medium transition-all rounded-xl ${isSaved
-                      ? 'bg-green-500 text-white'
-                      : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-400 hover:to-emerald-400 shadow-lg hover:shadow-green-500/25'
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-400 hover:to-emerald-400 shadow-lg hover:shadow-green-500/25'
                     }`}
                 >
                   {isSaved ? '✓ 已保存' : '保存配置'}
@@ -1273,8 +1350,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ isOpen,
               <button
                 onClick={handleSaveModels}
                 className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${isSaved
-                    ? 'bg-green-500 text-white'
-                    : 'bg-white text-black hover:bg-cyan-400'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-white text-black hover:bg-cyan-400'
                   }`}
               >
                 {isSaved ? '✓ 已保存' : '保存设置'}

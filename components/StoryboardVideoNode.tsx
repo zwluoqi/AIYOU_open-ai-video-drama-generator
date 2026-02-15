@@ -159,18 +159,16 @@ const StoryboardVideoNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
                 return (
                   <div
                     key={shot.id}
-                    className={`p-2 rounded-lg border transition-all cursor-pointer ${
-                      isSelected
+                    className={`p-2 rounded-lg border transition-all cursor-pointer ${isSelected
                         ? 'bg-purple-500/10 border-purple-500/30'
                         : 'bg-black/40 border-white/10 hover:bg-black/60'
-                    }`}
+                      }`}
                     onClick={() => toggleShot(shot.id)}
                   >
                     <div className="flex items-center gap-2">
                       {/* Checkbox */}
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
-                        isSelected ? 'bg-purple-500 border-purple-500' : 'border-white/20'
-                      }`}>
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-purple-500 border-purple-500' : 'border-white/20'
+                        }`}>
                         {isSelected && <Check size={10} className="text-white" />}
                       </div>
 
@@ -206,11 +204,10 @@ const StoryboardVideoNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
           <button
             onClick={() => onAction(node.id, 'generate-prompt')}
             disabled={localSelectedIds.length === 0 || data.isLoading}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all ${
-              localSelectedIds.length === 0 || data.isLoading
+            className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all ${localSelectedIds.length === 0 || data.isLoading
                 ? 'bg-white/5 text-slate-500 cursor-not-allowed'
                 : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-lg hover:shadow-purple-500/20 hover:scale-[1.02]'
-            }`}
+              }`}
           >
             {data.isLoading ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />}
             <span>生成提示词</span>
@@ -251,11 +248,34 @@ const StoryboardVideoNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
           return;
         }
 
+        // 先加载第一张图片，获取实际宽高比
+        const firstImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('首张图片加载失败'));
+          img.src = selectedShots[0].splitImage;
+        });
+
+        const aspectRatio = firstImg.width / firstImg.height;
+        console.log('[图片融合] 面板实际宽高比:', aspectRatio.toFixed(2), firstImg.width, 'x', firstImg.height);
+
+        // 根据实际宽高比计算绘制尺寸，基础短边为 300px
+        let imgWidth: number;
+        let imgHeight: number;
+        if (aspectRatio >= 1) {
+          // 横屏或正方形
+          imgWidth = 300;
+          imgHeight = Math.round(300 / aspectRatio);
+        } else {
+          // 竖屏
+          imgHeight = 300;
+          imgWidth = Math.round(300 * aspectRatio);
+        }
+
         // 设置画布大小（根据图片数量决定布局）
         const cols = Math.ceil(Math.sqrt(selectedShots.length));
         const rows = Math.ceil(selectedShots.length / cols);
-        const imgWidth = 300;
-        const imgHeight = 169;
         const padding = 10;
 
         canvas.width = cols * imgWidth + (cols + 1) * padding;
@@ -392,11 +412,10 @@ const StoryboardVideoNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
                   handleImageFusion();
                 }}
                 disabled={data.isLoadingFusion || selectedShots.length === 0}
-                className={`mt-3 w-full px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                  data.isLoadingFusion || selectedShots.length === 0
+                className={`mt-3 w-full px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${data.isLoadingFusion || selectedShots.length === 0
                     ? 'bg-white/5 text-slate-500 cursor-not-allowed'
                     : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 hover:text-purple-200 border border-purple-500/30'
-                }`}
+                  }`}
               >
                 {data.isLoadingFusion ? <Loader2 className="animate-spin" size={12} /> : <ImageIcon size={12} />}
                 <span>{data.isLoadingFusion ? '融合中...' : '生成分镜融合图'}</span>
@@ -412,9 +431,8 @@ const StoryboardVideoNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
                 <span className="text-xs font-bold text-slate-400">视频生成提示词</span>
                 <button
                   onClick={() => onUpdate(node.id, { promptModified: false })}
-                  className={`text-[10px] transition-colors ${
-                    data.promptModified ? 'text-purple-400 hover:text-purple-300' : 'text-slate-600'
-                  }`}
+                  className={`text-[10px] transition-colors ${data.promptModified ? 'text-purple-400 hover:text-purple-300' : 'text-slate-600'
+                    }`}
                   disabled={!data.promptModified}
                 >
                   重置
@@ -469,12 +487,10 @@ const StoryboardVideoNodeComponent: React.FC<StoryboardVideoNodeProps> = ({
             const isCurrent = progress < stepProgress[idx] && (idx === 0 || progress >= stepProgress[idx - 1]);
 
             return (
-              <div key={step} className={`flex items-center gap-2 text-xs transition-all ${
-                isActive ? 'text-purple-400' : 'text-slate-600'
-              }`}>
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                  isActive ? 'bg-purple-500' : 'bg-white/10'
+              <div key={step} className={`flex items-center gap-2 text-xs transition-all ${isActive ? 'text-purple-400' : 'text-slate-600'
                 }`}>
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${isActive ? 'bg-purple-500' : 'bg-white/10'
+                  }`}>
                   {isActive && <Check size={10} className="text-white" />}
                   {isCurrent && <Loader2 className="animate-spin" size={10} />}
                 </div>

@@ -11,43 +11,44 @@ import { SmartSequenceItem, VideoGenerationMode, StoryboardShot, CharacterProfil
 import { logAPICall } from "./apiLogger";
 import { getUserDefaultModel } from "./modelConfig";
 import { llmProviderManager } from "./llmProviders";
+import { safityParseJson } from "@/utils/jsonutil";
 
 // Get API Key from localStorage only
 const getApiKey = (): string | null => {
-  // Only use user configured API Key in localStorage
-  const userApiKey = localStorage.getItem('GEMINI_API_KEY');
-  if (userApiKey && userApiKey.trim()) {
-    return userApiKey.trim();
-  }
+    // Only use user configured API Key in localStorage
+    const userApiKey = localStorage.getItem('GEMINI_API_KEY');
+    if (userApiKey && userApiKey.trim()) {
+        return userApiKey.trim();
+    }
 
-  // No fallback - user must configure their own key
-  return null;
+    // No fallback - user must configure their own key
+    return null;
 };
 
 // Get client from provider manager
 export const getClient = () => {
-  return llmProviderManager.getCurrentProvider().getClient();
+    return llmProviderManager.getCurrentProvider().getClient();
 };
 
 // 检查当前提供商是否为 Gemini（用于高级功能）
 const requireGeminiProvider = (featureName: string): void => {
-  const currentProvider = llmProviderManager.getCurrentProviderType();
-  if (currentProvider !== 'gemini') {
-    throw new Error(
-        `"${featureName}" 功能需要使用 Gemini 官方 API。\n\n` +
-        `当前提供商：${llmProviderManager.getCurrentProvider().getName()}\n\n` +
-        `请切换到 Gemini API (Google Official) 以使用此功能。`
-    );
-  }
+    const currentProvider = llmProviderManager.getCurrentProviderType();
+    if (currentProvider !== 'gemini') {
+        throw new Error(
+            `"${featureName}" 功能需要使用 Gemini 官方 API。\n\n` +
+            `当前提供商：${llmProviderManager.getCurrentProvider().getName()}\n\n` +
+            `请切换到 Gemini API (Google Official) 以使用此功能。`
+        );
+    }
 };
 
 // Legacy function - kept for backward compatibility
 export const getLegacyClient = () => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY_NOT_CONFIGURED");
-  }
-  return new GoogleGenAI({ apiKey });
+    const apiKey = getApiKey();
+    if (!apiKey) {
+        throw new Error("GEMINI_API_KEY_NOT_CONFIGURED");
+    }
+    return new GoogleGenAI({ apiKey });
 };
 
 const getErrorMessage = (error: any): string => {
@@ -61,29 +62,29 @@ const getErrorMessage = (error: any): string => {
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function retryWithBackoff<T>(
-  operation: () => Promise<T>, 
-  maxRetries: number = 3, 
-  baseDelay: number = 2000
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    baseDelay: number = 2000
 ): Promise<T> {
-  let lastError: any;
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await operation();
-    } catch (error: any) {
-      lastError = error;
-      const msg = getErrorMessage(error).toLowerCase();
-      const isOverloaded = error.status === 503 || error.code === 503 || msg.includes("overloaded") || msg.includes("503") || error.status === 429 || error.code === 429;
+    let lastError: any;
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await operation();
+        } catch (error: any) {
+            lastError = error;
+            const msg = getErrorMessage(error).toLowerCase();
+            const isOverloaded = error.status === 503 || error.code === 503 || msg.includes("overloaded") || msg.includes("503") || error.status === 429 || error.code === 429;
 
-      if (isOverloaded && i < maxRetries - 1) {
-        const delay = baseDelay * Math.pow(2, i);
-        console.warn(`API Overloaded (503/429). Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
-        await wait(delay);
-        continue;
-      }
-      throw error;
+            if (isOverloaded && i < maxRetries - 1) {
+                const delay = baseDelay * Math.pow(2, i);
+                console.warn(`API Overloaded (503/429). Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
+                await wait(delay);
+                continue;
+            }
+            throw error;
+        }
     }
-  }
-  throw lastError;
+    throw lastError;
 }
 
 // ... (Audio/Video/Image Utilities UNCHANGED) ...
@@ -106,7 +107,7 @@ const base64ToUint8Array = (base64: string): Uint8Array => {
 const combineBase64Chunks = (chunks: string[], sampleRate: number = 24000): string => {
     let totalLength = 0;
     const arrays: Uint8Array[] = [];
-    
+
     for (const chunk of chunks) {
         const arr = base64ToUint8Array(chunk);
         arrays.push(arr);
@@ -124,21 +125,21 @@ const combineBase64Chunks = (chunks: string[], sampleRate: number = 24000): stri
     const bitDepth = 16;
     const header = new ArrayBuffer(44);
     const headerView = new DataView(header);
-    
+
     writeString(headerView, 0, 'RIFF');
     headerView.setUint32(4, 36 + totalLength, true);
     writeString(headerView, 8, 'WAVE');
     writeString(headerView, 12, 'fmt ');
-    headerView.setUint32(16, 16, true); 
-    headerView.setUint16(20, 1, true); 
-    headerView.setUint16(22, channels, true); 
+    headerView.setUint32(16, 16, true);
+    headerView.setUint16(20, 1, true);
+    headerView.setUint16(22, channels, true);
     headerView.setUint32(24, sampleRate, true);
-    headerView.setUint32(28, sampleRate * channels * (bitDepth / 8), true); 
-    headerView.setUint16(32, channels * (bitDepth / 8), true); 
+    headerView.setUint32(28, sampleRate * channels * (bitDepth / 8), true);
+    headerView.setUint16(32, channels * (bitDepth / 8), true);
     headerView.setUint16(34, bitDepth, true);
     writeString(headerView, 36, 'data');
     headerView.setUint32(40, totalLength, true);
-    
+
     const wavFile = new Uint8Array(header.byteLength + totalLength);
     wavFile.set(new Uint8Array(header), 0);
     wavFile.set(merged, header.byteLength);
@@ -148,7 +149,7 @@ const combineBase64Chunks = (chunks: string[], sampleRate: number = 24000): stri
     for (let i = 0; i < wavFile.length; i += chunk) {
         binary += String.fromCharCode.apply(null, Array.from(wavFile.subarray(i, i + chunk)));
     }
-    
+
     return 'data:audio/wav;base64,' + btoa(binary);
 };
 
@@ -201,7 +202,7 @@ const convertImageToCompatibleFormat = async (base64Str: string): Promise<{ data
 export const extractLastFrame = (videoSrc: string): Promise<string> => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
-        video.crossOrigin = "anonymous"; 
+        video.crossOrigin = "anonymous";
         video.src = videoSrc;
         video.muted = true;
         video.onloadedmetadata = () => { video.currentTime = Math.max(0, video.duration - 0.1); };
@@ -1126,9 +1127,9 @@ export const analyzeVideo = async (
 };
 
 export const editImageWithText = async (imageBase64: string, prompt: string, model: string): Promise<string> => {
-     requireGeminiProvider('图片编辑');
-     const imgs = await generateImageFromText(prompt, model, [imageBase64], { count: 1 });
-     return imgs[0];
+    requireGeminiProvider('图片编辑');
+    const imgs = await generateImageFromText(prompt, model, [imageBase64], { count: 1 });
+    return imgs[0];
 };
 
 export const planStoryboard = async (
@@ -1443,7 +1444,7 @@ Style: ${visualStyle}
                 const text = response?.replace(/```json/g, '').replace(/```/g, '').trim() || "[]";
                 console.log('[generateDetailedStoryboard] Received response, parsing...');
 
-                const rawShots = JSON.parse(text);
+                const rawShots = safityParseJson(text)
                 console.log('[generateDetailedStoryboard] Parsed shots count:', rawShots.length);
 
                 // Validate and fix shot durations (must be 1-4 seconds)
@@ -1694,7 +1695,7 @@ export const generateCinematicStoryboard = async (
 
             try {
                 const text = response?.replace(/```json/g, '').replace(/```/g, '').trim() || "[]";
-                const rawShots = JSON.parse(text);
+                const rawShots = safityParseJson(text)
 
                 return rawShots.map((shot: any, index: number) => ({
                     id: `shot-${Date.now()}-${index}`,
@@ -1941,7 +1942,7 @@ export const generateCharacterProfile = async (
             );
 
             try {
-                const raw = JSON.parse(response || "{}");
+                const raw = safityParseJson(response || "{}")
                 // Ensure shape
                 return {
                     id: `char-${Date.now()}-${Math.random()}`,
