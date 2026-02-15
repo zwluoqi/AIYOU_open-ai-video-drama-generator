@@ -198,10 +198,10 @@ export class StoryboardVideoGeneratorNodeService extends BaseNodeService {
       // 获取角色三视图
       const characterViews = data.includeCharacterViews && data.characterData?.[0]
         ? {
-            frontView: data.characterData[0].frontView,
-            sideView: data.characterData[0].sideView,
-            backView: data.characterData[0].backView,
-          }
+          frontView: data.characterData[0].frontView,
+          sideView: data.characterData[0].sideView,
+          backView: data.characterData[0].backView,
+        }
         : {};
 
       // 融合图片
@@ -250,7 +250,11 @@ export class StoryboardVideoGeneratorNodeService extends BaseNodeService {
     // 获取平台 API Key
     const apiKey = getVideoPlatformApiKey(platformCode);
     if (!apiKey) {
-      throw new Error(`请先配置 ${platformCode} 平台的 API Key`);
+      const platformNames: Record<string, string> = {
+        yunwuapi: '云雾API',
+        custom: '自定义视频平台'
+      };
+      throw new Error(`请先在设置面板配置 ${platformNames[platformCode] || platformCode} 的 API Key`);
     }
 
     const result = await generateVideoFromStoryboard(
@@ -268,7 +272,8 @@ export class StoryboardVideoGeneratorNodeService extends BaseNodeService {
             ...data,
             progress: adjustedProgress,
           } as StoryboardVideoGeneratorData, context);
-        }
+        },
+        subModel: data.subModel  // 传递用户选择的子模型（自定义平台从 /v1/models 获取）
       }
     );
 

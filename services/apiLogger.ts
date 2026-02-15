@@ -275,12 +275,12 @@ class APILogger {
             body: JSON.stringify(cleanLog),
             keepalive: true
         })
-        .then(() => {
-        })
-        .catch(err => {
-            // 不阻塞主流程，但记录错误
-            console.error(`[API Logger] ✗ 发送日志失败: ${cleanLog.apiName}`, err.message);
-        });
+            .then(() => {
+            })
+            .catch(err => {
+                // 不阻塞主流程，但记录错误
+                console.error(`[API Logger] ✗ 发送日志失败: ${cleanLog.apiName}`, err.message);
+            });
     }
 
     private sanitizeResponse(response: any): any {

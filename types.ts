@@ -566,8 +566,8 @@ export interface StoryboardVideoGeneratorData {
   promptModified: boolean;
 
   // 平台和模型配置
-  selectedPlatform?: 'yunwuapi' | 'official' | 'custom';  // 默认yunwuapi
-  selectedModel?: 'veo' | 'luma' | 'runway' | 'minimax' | 'volcengine' | 'grok' | 'qwen' | 'sora';
+  selectedPlatform?: 'yunwuapi' | 'custom';  // 默认yunwuapi
+  selectedModel?: 'veo' | 'luma' | 'runway' | 'minimax' | 'volcengine' | 'grok' | 'qwen' | 'sora' | 'custom';
   subModel?: string;  // 子模型，例如 veo3.1-fast, ray-v2, sora-2 等
   modelConfig: {
     aspect_ratio: '16:9' | '9:16';

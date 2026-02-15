@@ -127,7 +127,8 @@ export class YunwuAPIPlatformProvider implements VideoPlatformProvider {
       volcengine: ['5', '10', '15'],
       grok: ['5', '10'],
       qwen: ['5', '10', '15', '25'],
-      sora: ['5', '10', '15']
+      sora: ['5', '10', '15'],
+      custom: ['5', '10', '15', '25']
     };
 
     return modelConfig[model]?.includes(duration) || false;

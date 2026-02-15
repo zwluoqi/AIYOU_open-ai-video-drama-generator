@@ -6,7 +6,7 @@
 /**
  * 支持的三方平台类型
  */
-export type VideoPlatformType = 'yunwuapi' | 'official' | 'custom';
+export type VideoPlatformType = 'yunwuapi' | 'custom';
 
 /**
  * 支持的视频模型类型（在 yunwuapi 平台上）
@@ -19,7 +19,8 @@ export type VideoModelType =
   | 'volcengine'    // 豆包
   | 'grok'          // Grok
   | 'qwen'          // 通义万象
-  | 'sora';         // Sora
+  | 'sora'          // Sora
+  | 'custom';       // 自定义平台模型
 
 /**
  * 统一的视频生成配置
